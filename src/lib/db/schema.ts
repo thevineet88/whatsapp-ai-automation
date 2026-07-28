@@ -1,3 +1,4 @@
+import { packageCategoryValues } from "@/lib/core/package";
 import { relations } from "drizzle-orm";
 import {
   boolean,
@@ -33,14 +34,7 @@ const vector = customType<{ data: number[]; driverData: string }>({
   },
 });
 
-export const packageCategoryEnum = pgEnum("package_category", [
-  "spiritual",
-  "beach",
-  "adventure",
-  "nature",
-  "ladies_special",
-  "parents_special",
-]);
+export const packageCategoryEnum = pgEnum("package_category", packageCategoryValues);
 
 export const messageDirectionEnum = pgEnum("message_direction", ["inbound", "outbound"]);
 
@@ -179,6 +173,72 @@ export const batches = pgTable(
   ],
 );
 
+export const paymentInstallments = pgTable(
+  "payment_installments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    packageId: uuid("package_id")
+      .notNull()
+      .references(() => packages.id),
+    sequence: integer("sequence").notNull(),
+    label: text("label").notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    dueBy: text("due_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("payment_installments_tenant_id_idx").on(table.tenantId),
+    index("payment_installments_package_id_idx").on(table.packageId),
+    uniqueIndex("payment_installments_package_sequence_idx").on(table.packageId, table.sequence),
+  ],
+);
+
+export const cancellationRules = pgTable(
+  "cancellation_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    packageId: uuid("package_id")
+      .notNull()
+      .references(() => packages.id),
+    sequence: integer("sequence").notNull(),
+    cutoff: text("cutoff").notNull(),
+    deduction: text("deduction").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("cancellation_rules_tenant_id_idx").on(table.tenantId),
+    index("cancellation_rules_package_id_idx").on(table.packageId),
+    uniqueIndex("cancellation_rules_package_sequence_idx").on(table.packageId, table.sequence),
+  ],
+);
+
+export const batchPriceVariants = pgTable(
+  "batch_price_variants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id),
+    occupancyType: text("occupancy_type").notNull(),
+    pricePaise: integer("price_paise").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("batch_price_variants_tenant_id_idx").on(table.tenantId),
+    index("batch_price_variants_batch_id_idx").on(table.batchId),
+    uniqueIndex("batch_price_variants_batch_occupancy_idx").on(table.batchId, table.occupancyType),
+  ],
+);
+
 export const knowledgeChunks = pgTable(
   "knowledge_chunks",
   {
@@ -260,10 +320,25 @@ export const tenantsRelations = relations(tenants, ({ many }) => ({
 export const packagesRelations = relations(packages, ({ one, many }) => ({
   tenant: one(tenants, { fields: [packages.tenantId], references: [tenants.id] }),
   batches: many(batches),
+  paymentInstallments: many(paymentInstallments),
+  cancellationRules: many(cancellationRules),
 }));
 
-export const batchesRelations = relations(batches, ({ one }) => ({
+export const batchesRelations = relations(batches, ({ one, many }) => ({
   package: one(packages, { fields: [batches.packageId], references: [packages.id] }),
+  priceVariants: many(batchPriceVariants),
+}));
+
+export const paymentInstallmentsRelations = relations(paymentInstallments, ({ one }) => ({
+  package: one(packages, { fields: [paymentInstallments.packageId], references: [packages.id] }),
+}));
+
+export const cancellationRulesRelations = relations(cancellationRules, ({ one }) => ({
+  package: one(packages, { fields: [cancellationRules.packageId], references: [packages.id] }),
+}));
+
+export const batchPriceVariantsRelations = relations(batchPriceVariants, ({ one }) => ({
+  batch: one(batches, { fields: [batchPriceVariants.batchId], references: [batches.id] }),
 }));
 
 export const conversationsRelations = relations(conversations, ({ one, many }) => ({

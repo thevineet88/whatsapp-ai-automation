@@ -1,9 +1,19 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import "dotenv/config";
+import { STANDARD_POINTS_TO_NOTE } from "@/lib/core/package";
+import { STANDARD_CANCELLATION_POLICY } from "@/lib/core/pricing";
 import type { Db } from "./client";
 import { createDb } from "./client";
-import { batches, packages, tenantConfigs, tenants, whatsappAccounts } from "./schema";
+import {
+  batches,
+  cancellationRules,
+  packages,
+  paymentInstallments,
+  tenantConfigs,
+  tenants,
+  whatsappAccounts,
+} from "./schema";
 
 type SeedPackageInput = {
   name: string;
@@ -26,15 +36,13 @@ type SeedPackageInput = {
     startingPricePaise: number;
     lastBookingDate: string;
   };
+  paymentInstallments: {
+    sequence: number;
+    label: string;
+    amountPaise: number;
+    dueBy: string;
+  }[];
 };
-
-const STANDARD_POINTS_TO_NOTE = [
-  "Group conduct and itinerary decisions during the trip are at the sole discretion of the tour manager.",
-  "Itinerary is subject to change due to weather, road, or local authority conditions.",
-  "Samyati Holidays' liability is limited to the services listed under Inclusions.",
-  "Seating in vehicles is allotted by the tour manager and is not guaranteed by booking order.",
-  "Personal expenses at stops (meals outside the itinerary, shopping, tips) are borne by the traveller.",
-];
 
 const SEED_PACKAGES: SeedPackageInput[] = [
   {
@@ -106,6 +114,26 @@ const SEED_PACKAGES: SeedPackageInput[] = [
       startingPricePaise: 21_111_00,
       lastBookingDate: "2026-08-25",
     },
+    paymentInstallments: [
+      {
+        sequence: 1,
+        label: "1st Installment",
+        amountPaise: 7_000_00,
+        dueBy: "At the time of booking",
+      },
+      {
+        sequence: 2,
+        label: "2nd Installment",
+        amountPaise: 8_000_00,
+        dueBy: "45 days before departure",
+      },
+      {
+        sequence: 3,
+        label: "Final Installment",
+        amountPaise: 6_111_00,
+        dueBy: "15 days before departure",
+      },
+    ],
   },
   {
     name: "Gokarna-Murudeshwar",
@@ -162,6 +190,26 @@ const SEED_PACKAGES: SeedPackageInput[] = [
       startingPricePaise: 9_999_00,
       lastBookingDate: "2026-09-18",
     },
+    paymentInstallments: [
+      {
+        sequence: 1,
+        label: "1st Installment",
+        amountPaise: 2_000_00,
+        dueBy: "At the time of booking",
+      },
+      {
+        sequence: 2,
+        label: "2nd Installment",
+        amountPaise: 4_000_00,
+        dueBy: "30 days before departure",
+      },
+      {
+        sequence: 3,
+        label: "Final Installment",
+        amountPaise: 3_999_00,
+        dueBy: "10 days before departure",
+      },
+    ],
   },
   {
     name: "Sikkim-Darjeeling",
@@ -221,6 +269,26 @@ const SEED_PACKAGES: SeedPackageInput[] = [
       startingPricePaise: 27_777_00,
       lastBookingDate: "2026-10-01",
     },
+    paymentInstallments: [
+      {
+        sequence: 1,
+        label: "1st Installment",
+        amountPaise: 7_000_00,
+        dueBy: "At the time of booking",
+      },
+      {
+        sequence: 2,
+        label: "2nd Installment",
+        amountPaise: 12_000_00,
+        dueBy: "45 days before departure",
+      },
+      {
+        sequence: 3,
+        label: "Final Installment",
+        amountPaise: 8_777_00,
+        dueBy: "15 days before departure",
+      },
+    ],
   },
 ];
 
@@ -279,6 +347,22 @@ export async function seedSamyati(db: Db) {
       startingPricePaise: seedPackage.batch.startingPricePaise,
       lastBookingDate: seedPackage.batch.lastBookingDate,
     });
+
+    await db.insert(paymentInstallments).values(
+      seedPackage.paymentInstallments.map((installment) => ({
+        tenantId: tenant.id,
+        packageId: insertedPackage.id,
+        ...installment,
+      })),
+    );
+
+    await db.insert(cancellationRules).values(
+      STANDARD_CANCELLATION_POLICY.map((rule) => ({
+        tenantId: tenant.id,
+        packageId: insertedPackage.id,
+        ...rule,
+      })),
+    );
   }
 
   return tenant;
