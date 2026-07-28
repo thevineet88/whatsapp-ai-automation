@@ -32,7 +32,7 @@ export default async function PackagesPage() {
           {rows.map((pkg) => (
             <tr key={pkg.id} style={{ borderBottom: "1px solid #eee" }}>
               <td style={{ padding: "0.4rem 0" }}>{pkg.name}</td>
-              <td>{pkg.category}</td>
+              <td>{pkg.category.join(", ")}</td>
               <td>
                 {pkg.durationDays}D/{pkg.durationNights}N
               </td>

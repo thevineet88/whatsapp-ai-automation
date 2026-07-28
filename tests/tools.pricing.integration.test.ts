@@ -25,9 +25,19 @@ afterAll(async () => {
   await container.stop();
 });
 
+async function gokarnaBatch() {
+  const [pkg] = await db
+    .select()
+    .from(packages)
+    .where(and(eq(packages.tenantId, tenant.id), eq(packages.slug, "gokarna-murudeshwar")))
+    .limit(1);
+  const [batch] = await db.select().from(batches).where(eq(batches.packageId, pkg.id)).limit(1);
+  return batch;
+}
+
 describe("get_price", () => {
   it("returns the batch's starting price with no variants when none are configured", async () => {
-    const [batch] = await db.select().from(batches).where(eq(batches.tenantId, tenant.id)).limit(1);
+    const batch = await gokarnaBatch();
 
     const price = await getPrice(db, tenant.id, { batchId: batch.id });
 
@@ -39,7 +49,7 @@ describe("get_price", () => {
   });
 
   it("returns per-occupancy variants ordered by price when a package defines room-type options", async () => {
-    const [batch] = await db.select().from(batches).where(eq(batches.tenantId, tenant.id)).limit(1);
+    const batch = await gokarnaBatch();
 
     await db.insert(batchPriceVariants).values([
       { tenantId: tenant.id, batchId: batch.id, occupancyType: "triple", pricePaise: 19_999_00 },
@@ -74,7 +84,7 @@ describe("get_payment_schedule", () => {
     const [pkg] = await db
       .select()
       .from(packages)
-      .where(and(eq(packages.tenantId, tenant.id), eq(packages.slug, "gokarna-murudeshwar")))
+      .where(and(eq(packages.tenantId, tenant.id), eq(packages.slug, "kerala")))
       .limit(1);
 
     const schedule = await getPaymentSchedule(db, tenant.id, { packageId: pkg.id });
@@ -82,21 +92,15 @@ describe("get_payment_schedule", () => {
     expect(schedule.installments).toEqual([
       {
         sequence: 1,
-        label: "1st Installment",
-        amountPaise: 2_000_00,
-        dueBy: "At the time of booking",
+        label: "1st Installment (Non-Refundable)",
+        amountPaise: 8_555_00,
+        dueBy: "25 July 2026",
       },
       {
         sequence: 2,
         label: "2nd Installment",
-        amountPaise: 4_000_00,
-        dueBy: "30 days before departure",
-      },
-      {
-        sequence: 3,
-        label: "Final Installment",
-        amountPaise: 3_999_00,
-        dueBy: "10 days before departure",
+        amountPaise: 7_000_00,
+        dueBy: "20 Aug 2026",
       },
     ]);
 
@@ -106,14 +110,9 @@ describe("get_payment_schedule", () => {
     expect(totalInstallmentPaise).toBe(batch.startingPricePaise);
 
     expect(schedule.cancellationPolicy).toEqual([
-      { sequence: 1, cutoff: "45+ days before departure", deduction: "25% of package cost" },
-      { sequence: 2, cutoff: "30-44 days before departure", deduction: "50% of package cost" },
-      { sequence: 3, cutoff: "15-29 days before departure", deduction: "75% of package cost" },
-      {
-        sequence: 4,
-        cutoff: "Less than 15 days before departure, or no-show",
-        deduction: "100% of package cost",
-      },
+      { sequence: 1, cutoff: "On/Before 05 Aug 2026", deduction: "50%" },
+      { sequence: 2, cutoff: "On/Before 25 Aug 2026", deduction: "90%" },
+      { sequence: 3, cutoff: "After that", deduction: "No Refund" },
     ]);
 
     expect(schedule.note).toBe(FIRST_INSTALLMENT_NON_REFUNDABLE_NOTE);

@@ -25,9 +25,9 @@ afterAll(async () => {
 });
 
 describe("search_packages", () => {
-  it("filters by category", async () => {
-    const results = await searchPackages(db, tenant.id, { category: "spiritual" });
-    expect(results.map((p) => p.slug)).toEqual(["kedarnath-badrinath-yatra"]);
+  it("filters by category, matching packages with multiple categories too", async () => {
+    const results = await searchPackages(db, tenant.id, { category: "beach" });
+    expect(results.map((p) => p.slug)).toEqual(["gokarna-murudeshwar"]);
   });
 
   it("filters by region term matched against name and travel points", async () => {
@@ -36,13 +36,13 @@ describe("search_packages", () => {
   });
 
   it("filters by exact duration in days", async () => {
-    const results = await searchPackages(db, tenant.id, { durationDays: 5 });
-    expect(results.map((p) => p.slug)).toEqual(["gokarna-murudeshwar"]);
+    const results = await searchPackages(db, tenant.id, { durationDays: 11 });
+    expect(results.map((p) => p.slug)).toEqual(["kedarnath-badrinath-yatra"]);
   });
 
   it("filters by the month a package has an upcoming batch departing", async () => {
-    const results = await searchPackages(db, tenant.id, { month: 9 });
-    expect(results.map((p) => p.slug)).toEqual(["kedarnath-badrinath-yatra"]);
+    const results = await searchPackages(db, tenant.id, { month: 8 });
+    expect(results.map((p) => p.slug)).toEqual(["gokarna-murudeshwar"]);
   });
 
   it("never returns another tenant's packages", async () => {

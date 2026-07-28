@@ -17,6 +17,8 @@ export const itineraryDaySchema = z.object({
   day: z.number().int().positive(),
   title: z.string().min(1),
   description: z.string().min(1),
+  date: z.string().min(1).optional(),
+  meals: z.string().min(1).optional(),
 });
 export type ItineraryDay = z.infer<typeof itineraryDaySchema>;
 
@@ -37,7 +39,7 @@ export const packageInputSchema = z.object({
     .string()
     .min(1)
     .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "Slug must be lowercase-kebab-case"),
-  category: packageCategorySchema,
+  category: z.array(packageCategorySchema).min(1),
   durationDays: z.number().int().positive(),
   durationNights: z.number().int().nonnegative(),
   highlights: z.array(z.string().min(1)).min(1),
@@ -59,7 +61,7 @@ export const batchInputSchema = z
     seatsTotal: z.number().int().positive(),
     seatsAvailable: z.number().int().nonnegative(),
     startingPricePaise: z.number().int().positive(),
-    lastBookingDate: isoDateSchema,
+    lastBookingDate: isoDateSchema.nullable(),
   })
   .refine((batch) => batch.seatsAvailable <= batch.seatsTotal, {
     message: "seatsAvailable cannot exceed seatsTotal",

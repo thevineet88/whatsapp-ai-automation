@@ -1,7 +1,7 @@
 import { packageCategorySchema } from "@/lib/core/package";
 import type { Db } from "@/lib/db/client";
 import { batches, packages } from "@/lib/db/schema";
-import { and, asc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, arrayContains, asc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 /**
@@ -22,7 +22,7 @@ export async function searchPackages(db: Db, tenantId: string, input: SearchPack
   const conditions = [eq(packages.tenantId, tenantId)];
 
   if (input.category) {
-    conditions.push(eq(packages.category, input.category));
+    conditions.push(arrayContains(packages.category, [input.category]));
   }
   if (input.durationDays) {
     conditions.push(eq(packages.durationDays, input.durationDays));

@@ -24,12 +24,8 @@ export function PackageForm({
       <Field label="Slug (lowercase-kebab-case)" htmlFor="slug">
         <input id="slug" name="slug" defaultValue={defaults?.slug} required />
       </Field>
-      <Field label="Category" htmlFor="category">
-        <select
-          id="category"
-          name="category"
-          defaultValue={defaults?.category ?? packageCategoryValues[0]}
-        >
+      <Field label="Category (select one or more)" htmlFor="category">
+        <select id="category" name="category" multiple defaultValue={defaults?.category ?? []}>
           {packageCategoryValues.map((category) => (
             <option key={category} value={category}>
               {category}

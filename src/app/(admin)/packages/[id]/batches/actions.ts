@@ -10,12 +10,13 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 function parseBatchForm(formData: FormData): unknown {
+  const lastBookingDate = String(formData.get("lastBookingDate") ?? "").trim();
   return {
     departureDate: String(formData.get("departureDate") ?? ""),
     seatsTotal: Number(formData.get("seatsTotal")),
     seatsAvailable: Number(formData.get("seatsAvailable")),
     startingPricePaise: Number(formData.get("startingPricePaise")),
-    lastBookingDate: String(formData.get("lastBookingDate") ?? ""),
+    lastBookingDate: lastBookingDate.length > 0 ? lastBookingDate : null,
   };
 }
 

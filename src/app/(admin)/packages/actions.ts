@@ -33,7 +33,7 @@ function parsePackageForm(formData: FormData): unknown {
   return {
     name: String(formData.get("name") ?? "").trim(),
     slug: String(formData.get("slug") ?? "").trim(),
-    category: String(formData.get("category") ?? ""),
+    category: formData.getAll("category").map(String),
     durationDays: Number(formData.get("durationDays")),
     durationNights: Number(formData.get("durationNights")),
     highlights: linesOf(String(formData.get("highlights") ?? "")),

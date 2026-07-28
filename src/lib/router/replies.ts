@@ -47,10 +47,11 @@ export function batchesReply(
     if (batch.isFull) {
       return `- ${formatDate(batch.departureDate)}: Sold out`;
     }
-    return `- ${formatDate(batch.departureDate)}: ${batch.seatsAvailable} seats available, starting from ${formatRupees(batch.startingPricePaise)} per person`;
+    const bookBy = batch.lastBookingDate ? `, book by ${formatDate(batch.lastBookingDate)}` : "";
+    return `- ${formatDate(batch.departureDate)}: ${batch.seatsAvailable} seats available, starting from ${formatRupees(batch.startingPricePaise)} per person${bookBy}`;
   });
 
-  return `Upcoming batches for ${pkg.name}:\n${lines.join("\n")}\nLast booking date applies to each batch.`;
+  return `Upcoming batches for ${pkg.name}:\n${lines.join("\n")}`;
 }
 
 export function noUpcomingBatchesReply(pkg: Pick<PackageRow, "name">): string {

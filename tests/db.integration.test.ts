@@ -32,14 +32,19 @@ describe("schema + seed", () => {
     const seededPackages = await scoped.packages.findMany();
     const seededBatches = await scoped.batches.findMany();
 
-    expect(seededPackages).toHaveLength(3);
-    expect(seededBatches).toHaveLength(3);
+    expect(seededPackages).toHaveLength(8);
+    expect(seededBatches).toHaveLength(8);
 
     const slugs = seededPackages.map((p) => p.slug).sort();
     expect(slugs).toEqual([
+      "ayodhya-kashi-prayagraj",
       "gokarna-murudeshwar",
       "kedarnath-badrinath-yatra",
+      "kerala",
+      "nainital-mussoorie",
+      "rameshwaram",
       "sikkim-darjeeling",
+      "ujjain-indore",
     ]);
 
     for (const pkg of seededPackages) {

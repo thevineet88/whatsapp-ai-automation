@@ -123,7 +123,7 @@ export default async function BatchesPage({
                     <input
                       type="date"
                       name="lastBookingDate"
-                      defaultValue={batch.lastBookingDate}
+                      defaultValue={batch.lastBookingDate ?? ""}
                     />
                     <textarea
                       name="priceVariants"
@@ -174,9 +174,9 @@ export default async function BatchesPage({
           <input type="number" name="startingPricePaise" required style={{ width: 130 }} />
         </label>
         <label>
-          Last booking date
+          Last booking date (optional)
           <br />
-          <input type="date" name="lastBookingDate" required />
+          <input type="date" name="lastBookingDate" />
         </label>
         <label>
           Room-type prices (optional, one per line: occupancy:pricePaise)

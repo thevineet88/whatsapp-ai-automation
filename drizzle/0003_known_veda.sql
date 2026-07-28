@@ -1,0 +1,2 @@
+ALTER TABLE "batches" ALTER COLUMN "last_booking_date" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "packages" ALTER COLUMN "category" SET DATA TYPE "public"."package_category"[] USING ARRAY["category"]::"public"."package_category"[];

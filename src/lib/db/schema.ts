@@ -127,7 +127,7 @@ export const packages = pgTable(
       .references(() => tenants.id),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
-    category: packageCategoryEnum("category").notNull(),
+    category: packageCategoryEnum("category").array().notNull(),
     durationDays: integer("duration_days").notNull(),
     durationNights: integer("duration_nights").notNull(),
     highlights: jsonb("highlights").$type<string[]>().notNull(),
@@ -137,7 +137,7 @@ export const packages = pgTable(
     travelMode: text("travel_mode").notNull(),
     returnPoint: text("return_point").notNull(),
     itinerary: jsonb("itinerary")
-      .$type<{ day: number; title: string; description: string }[]>()
+      .$type<{ day: number; title: string; description: string; date?: string; meals?: string }[]>()
       .notNull(),
     inclusions: jsonb("inclusions").$type<string[]>().notNull(),
     exclusions: jsonb("exclusions").$type<string[]>().notNull(),
@@ -165,7 +165,9 @@ export const batches = pgTable(
     seatsTotal: integer("seats_total").notNull(),
     seatsAvailable: integer("seats_available").notNull(),
     startingPricePaise: integer("starting_price_paise").notNull(),
-    lastBookingDate: date("last_booking_date").notNull(),
+    // Nullable: some real batches don't have a fixed cutoff yet ("Contact
+    // us" on the source site) and travellers should still see the batch.
+    lastBookingDate: date("last_booking_date"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
