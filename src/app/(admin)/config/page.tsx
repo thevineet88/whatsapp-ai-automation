@@ -1,6 +1,6 @@
 import { tenants } from "@/lib/db/schema";
 import { getServerDb } from "@/lib/db/serverDb";
-import { getActiveTenantConfig } from "@/lib/db/tenantConfig";
+import { getActiveTenantConfig, getHoldingReplyMessage } from "@/lib/db/tenantConfig";
 import { updateTenantConfig } from "./actions";
 
 export default async function ConfigPage({
@@ -21,6 +21,7 @@ export default async function ConfigPage({
   const contactsText = (config?.escalationContacts ?? [])
     .map((contact) => `${contact.name}, ${contact.phone}`)
     .join("\n");
+  const holdingReplyMessage = getHoldingReplyMessage(config);
 
   return (
     <main>
@@ -42,6 +43,20 @@ export default async function ConfigPage({
           rows={6}
           cols={40}
           defaultValue={contactsText}
+          style={{ fontFamily: "inherit", fontSize: "1rem", marginTop: "0.5rem" }}
+        />
+        <br />
+
+        <label htmlFor="holdingReplyMessage" style={{ display: "block", marginTop: "1.5rem" }}>
+          Holding reply (sent to a traveller whenever the bot hands off to a human)
+        </label>
+        <br />
+        <textarea
+          id="holdingReplyMessage"
+          name="holdingReplyMessage"
+          rows={3}
+          cols={40}
+          defaultValue={holdingReplyMessage}
           style={{ fontFamily: "inherit", fontSize: "1rem", marginTop: "0.5rem" }}
         />
         <br />

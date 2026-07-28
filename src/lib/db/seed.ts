@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import "dotenv/config";
+import { DEFAULT_HOLDING_REPLY } from "@/lib/core/config";
 import { STANDARD_POINTS_TO_NOTE } from "@/lib/core/package";
 import { STANDARD_CANCELLATION_POLICY } from "@/lib/core/pricing";
 import type { Db } from "./client";
@@ -312,7 +313,7 @@ export async function seedSamyati(db: Db) {
       { name: "Shrutika", phone: "+91 90760 68549" },
       { name: "Tejashree", phone: "+91 90760 68549" },
     ],
-    config: {},
+    config: { holdingReplyMessage: DEFAULT_HOLDING_REPLY },
     isActive: true,
   });
 

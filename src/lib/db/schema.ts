@@ -87,6 +87,7 @@ export const conversations = pgTable(
     travellerPhone: text("traveller_phone").notNull(),
     packageId: uuid("package_id").references(() => packages.id),
     status: conversationStatusEnum("status").notNull().default("open"),
+    pendingClarificationCount: integer("pending_clarification_count").notNull().default(0),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

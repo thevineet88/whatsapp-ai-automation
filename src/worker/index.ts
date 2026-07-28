@@ -3,7 +3,7 @@ import { createDb } from "@/lib/db/client";
 import { WHATSAPP_INBOUND_QUEUE, type WhatsAppInboundJob } from "@/lib/queue/whatsappInboundQueue";
 import { createBullMQConnection } from "@/lib/redis/client";
 import { Worker } from "bullmq";
-import { handleInboundMessage } from "./handlers/echoMessage";
+import { handleInboundMessage } from "./handlers/answerMessage";
 
 function requireEnv(name: string): string {
   const value = process.env[name];

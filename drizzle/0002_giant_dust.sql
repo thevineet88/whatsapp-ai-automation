@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "pending_clarification_count" integer DEFAULT 0 NOT NULL;

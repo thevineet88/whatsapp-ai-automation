@@ -1,4 +1,4 @@
-import type { TenantConfigInput } from "@/lib/core/config";
+import { DEFAULT_HOLDING_REPLY, type TenantConfigInput } from "@/lib/core/config";
 import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "./client";
 import { tenantConfigs } from "./schema";
@@ -11,6 +11,13 @@ export async function getActiveTenantConfig(db: Db, tenantId: string) {
     .orderBy(desc(tenantConfigs.version))
     .limit(1);
   return row ?? null;
+}
+
+export function getHoldingReplyMessage(
+  config: Pick<typeof tenantConfigs.$inferSelect, "config"> | null,
+): string {
+  const value = config?.config?.holdingReplyMessage;
+  return typeof value === "string" && value.length > 0 ? value : DEFAULT_HOLDING_REPLY;
 }
 
 /**
@@ -44,7 +51,7 @@ export async function createTenantConfigVersion(
         tenantId,
         version: (previous?.version ?? 0) + 1,
         escalationContacts: input.escalationContacts,
-        config: {},
+        config: { holdingReplyMessage: input.holdingReplyMessage },
         isActive: true,
       })
       .returning();

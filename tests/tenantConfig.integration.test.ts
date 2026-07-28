@@ -31,6 +31,7 @@ describe("tenant config versioning", () => {
 
     const updated = await createTenantConfigVersion(db, tenant.id, {
       escalationContacts: [{ name: "Rohit", phone: "+91 90760 68549" }],
+      holdingReplyMessage: "Thanks, someone will be with you shortly.",
     });
 
     expect(updated.version).toBe(2);

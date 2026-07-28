@@ -20,8 +20,11 @@ function parseContactsField(raw: string) {
 
 export async function updateTenantConfig(formData: FormData): Promise<void> {
   const raw = String(formData.get("escalationContacts") ?? "");
+  const holdingReplyMessage = String(formData.get("holdingReplyMessage") ?? "").trim();
+
   const parsed = tenantConfigInputSchema.safeParse({
     escalationContacts: parseContactsField(raw),
+    holdingReplyMessage: holdingReplyMessage.length > 0 ? holdingReplyMessage : undefined,
   });
 
   if (!parsed.success) {
