@@ -13,9 +13,12 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/db/migrate.ts",
-    "db:seed": "tsx src/lib/db/seed.ts"
+    "db:seed": "tsx src/lib/db/seed.ts",
+    "db:ingest": "tsx src/lib/rag/ingestSeed.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.22",
+    "ai": "^7.0.40",
     "bullmq": "^5.81.2",
     "drizzle-orm": "^0.44.2",
     "ioredis": "^5.4.2",
