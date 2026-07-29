@@ -19,10 +19,12 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.22",
+    "@sentry/node": "^10.69.0",
     "ai": "^7.0.40",
     "bullmq": "^5.81.2",
     "drizzle-orm": "^0.44.2",
     "ioredis": "^5.4.2",
+    "langfuse": "^3.38.20",
     "next": "^15.5.4",
     "openai": "^7.1.0",
     "pg": "^8.13.1",

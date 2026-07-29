@@ -56,20 +56,23 @@ function stubClassifier(
   rules: (input: UnderstandingInput) => Partial<MessageUnderstanding>,
 ): UnderstandingClassifier {
   return async (input) => ({
-    intent: "other",
-    secondaryIntent: null,
-    packageId: input.anchoredPackageId,
-    packageCandidateIds: [],
-    namedUnrecognizedPlace: false,
-    safetyFlags: {
-      fitnessOrHealth: false,
-      bookingOrPayment: false,
-      complaintOrSafety: false,
-      humanRequest: false,
+    understanding: {
+      intent: "other",
+      secondaryIntent: null,
+      packageId: input.anchoredPackageId,
+      packageCandidateIds: [],
+      namedUnrecognizedPlace: false,
+      safetyFlags: {
+        fitnessOrHealth: false,
+        bookingOrPayment: false,
+        complaintOrSafety: false,
+        humanRequest: false,
+      },
+      needsHuman: false,
+      confidence: 0.9,
+      ...rules(input),
     },
-    needsHuman: false,
-    confidence: 0.9,
-    ...rules(input),
+    usage: { model: "stub", inputTokens: 1, outputTokens: 1 },
   });
 }
 
@@ -494,10 +497,13 @@ describe("handleInboundMessage (intent router)", () => {
     const [chunk] = chunkRows;
 
     const stubAnswerGenerator: AnswerGenerator = async ({ chunks }) => ({
-      needsHuman: false,
-      answerText:
-        "Yes, an Inner Line Permit is required for Nathula Pass, and our team arranges it for you.",
-      sourceIds: chunks.map((c) => c.id),
+      answer: {
+        needsHuman: false,
+        answerText:
+          "Yes, an Inner Line Permit is required for Nathula Pass, and our team arranges it for you.",
+        sourceIds: chunks.map((c) => c.id),
+      },
+      usage: { model: "stub", inputTokens: 1, outputTokens: 1 },
     });
 
     const sent: string[] = [];
@@ -550,9 +556,12 @@ describe("handleInboundMessage (intent router)", () => {
     });
 
     const hallucinatingAnswerGenerator: AnswerGenerator = async () => ({
-      needsHuman: false,
-      answerText: "Here is an answer citing a source that was never retrieved.",
-      sourceIds: ["00000000-0000-0000-0000-000000000000"],
+      answer: {
+        needsHuman: false,
+        answerText: "Here is an answer citing a source that was never retrieved.",
+        sourceIds: ["00000000-0000-0000-0000-000000000000"],
+      },
+      usage: { model: "stub", inputTokens: 1, outputTokens: 1 },
     });
 
     const sent: string[] = [];

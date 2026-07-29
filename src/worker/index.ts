@@ -6,6 +6,9 @@ import { createBullMQConnection } from "@/lib/redis/client";
 import { checkWhatsAppCredentials } from "@/lib/whatsapp/client";
 import { Worker } from "bullmq";
 import { handleInboundMessage } from "./handlers/answerMessage";
+import { initSentry, flushSentry } from "@/lib/observability/sentry";
+
+initSentry();
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -90,6 +93,7 @@ async function verifyWhatsAppCredentials(): Promise<void> {
 async function shutdown(): Promise<void> {
   console.log("whatsapp worker: shutting down");
   await worker.close();
+  await flushSentry();
   await db.$pool.end();
   process.exit(0);
 }

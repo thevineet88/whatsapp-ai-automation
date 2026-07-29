@@ -10,7 +10,7 @@ import {
 } from "@/lib/guardrails/escalationPolicy";
 import type { AnswerGenerator } from "@/lib/llm/answerModel";
 import { generateKnowledgeAnswer } from "@/lib/llm/generateAnswer";
-import type { UnderstandingClassifier } from "@/lib/llm/understanding";
+import { type UnderstandingClassifier, type UnderstandingOutput } from "@/lib/llm/understanding";
 import type { Embedder } from "@/lib/rag/embedder";
 import { listBatches } from "@/lib/tools/packages";
 import { getPaymentSchedule, getPrice } from "@/lib/tools/pricing";
@@ -70,6 +70,26 @@ export type RouteResult = {
   escalateReason: string | null;
   escalateSeverity: EscalationSeverity | null;
   sourceChunkIds: string[] | null;
+  // Optional trace data. Populated by the router as it runs; the worker
+  // reads it after routeMessage returns and writes a message_traces row.
+  // Optional and additive so tests that don't care about tracing don't need
+  // any changes.
+  trace?: RouteTraceData;
+};
+
+// Snapshot of trace-relevant data captured during one call to routeMessage.
+// Kept deliberately narrow: every field here is one the worker needs to
+// build a message_traces row.
+export type RouteTraceData = {
+  intent: string;
+  toolCalls: { name: string; input: unknown; output: unknown }[];
+  retrievedChunkIds: string[];
+  retrievalTopScore: number | null;
+  llmUsage: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+  } | null;
 };
 
 function noReply(state: ConversationRouteState): RouteResult {
@@ -101,19 +121,34 @@ export async function routeMessage(
 
   const catalogue = await loadCatalogue(db, tenantId);
 
+  // Trace accumulator. Mutable, captured by the inner functions so they can
+  // record what they actually did (which tool they invoked, what chunks
+  // they got back, etc) without each of them needing to return it. The
+  // worker reads `trace` from the final RouteResult.
+  const trace: RouteTraceData = {
+    intent: "human_takeover",
+    toolCalls: [],
+    retrievedChunkIds: [],
+    retrievalTopScore: null,
+    llmUsage: null,
+  };
+
   // Deterministic pre-gate first: the riskiest topics escalate without
   // waiting on a model call, and cannot be talked out of it downstream.
   const keywordReason = classifyEscalationKeywords(text);
 
   let understanding: MessageUnderstanding | null = null;
+  let understandingOutput: UnderstandingOutput | null = null;
   if (!keywordReason) {
     try {
-      understanding = await rag.understandingClassifier({
+      understandingOutput = await rag.understandingClassifier({
         message: text,
         history: state.history,
         anchoredPackageId: state.packageId,
         catalogue,
       });
+      understanding = understandingOutput.understanding;
+      trace.llmUsage = understandingOutput.usage;
     } catch (error) {
       console.error("routeMessage: understanding classifier failed, using keyword fallback", {
         tenantId,
@@ -124,21 +159,27 @@ export async function routeMessage(
 
   const escalation = resolveEscalation(keywordReason, understanding);
   if (escalation) {
-    return {
-      replyText: escalationReply(escalation.reason, holdingReplyMessage),
-      nextPackageId:
-        validatePackageId(understanding?.packageId ?? null, catalogue) ?? state.packageId,
-      nextPendingClarificationCount: 0,
-      escalateReason: escalation.reason,
-      escalateSeverity: escalation.severity,
-      sourceChunkIds: null,
-    };
+    return withTrace(
+      {
+        replyText: escalationReply(escalation.reason, holdingReplyMessage),
+        nextPackageId:
+          validatePackageId(understanding?.packageId ?? null, catalogue) ?? state.packageId,
+        nextPendingClarificationCount: 0,
+        escalateReason: escalation.reason,
+        escalateSeverity: escalation.severity,
+        sourceChunkIds: null,
+      },
+      { ...trace, intent: escalation.reason },
+    );
   }
 
   // The classifier is down. Fall back to the deterministic keyword router so
   // the traveller still gets a real answer rather than a holding reply.
   if (!understanding) {
-    return routeWithKeywordFallback(db, tenantId, state, holdingReplyMessage, text, rag, catalogue);
+    return withTrace(await routeWithKeywordFallback(db, tenantId, state, holdingReplyMessage, text, rag, catalogue, trace), {
+      ...trace,
+      intent: keywordReason ? "keyword_escalation" : "keyword_fallback",
+    });
   }
 
   const resolvedPackageId = validatePackageId(understanding.packageId, catalogue);
@@ -211,6 +252,7 @@ export async function routeMessage(
     }
   }
 
+  trace.intent = understanding.intent;
   const outcome = await buildReply({
     db,
     tenantId,
@@ -225,9 +267,14 @@ export async function routeMessage(
     state,
     text,
     holdingReplyMessage,
+    trace,
   });
 
   return outcome;
+}
+
+function withTrace(result: RouteResult, trace: RouteTraceData): RouteResult {
+  return { ...result, trace };
 }
 
 // package_overview and browse_packages are how a traveller names a specific
@@ -335,20 +382,27 @@ type BuildReplyInput = {
   state: ConversationRouteState;
   text: string;
   holdingReplyMessage: string;
+  // Shared mutable trace accumulator. Populated by answerFromKnowledge and
+  // runAnchoredIntent as they actually do work, then attached to the final
+  // RouteResult for the worker to persist.
+  trace: RouteTraceData;
 };
 
 async function buildReply(input: BuildReplyInput): Promise<RouteResult> {
-  const { db, tenantId, rag, catalogue, intent, anchored, candidateIds, state, text } = input;
+  const { db, tenantId, rag, catalogue, intent, anchored, candidateIds, state, text, trace } = input;
 
-  const keep = (replyText: string | null, extra?: Partial<RouteResult>): RouteResult => ({
-    replyText,
-    nextPackageId: anchored?.id ?? state.packageId,
-    nextPendingClarificationCount: 0,
-    escalateReason: null,
-    escalateSeverity: null,
-    sourceChunkIds: null,
-    ...extra,
-  });
+  const keep = (replyText: string | null, extra?: Partial<RouteResult>): RouteResult => {
+    const result: RouteResult = {
+      replyText,
+      nextPackageId: anchored?.id ?? state.packageId,
+      nextPendingClarificationCount: 0,
+      escalateReason: null,
+      escalateSeverity: null,
+      sourceChunkIds: null,
+      ...extra,
+    };
+    return withTrace(result, trace);
+  };
 
   if (intent === "greeting") {
     return keep(GREETING_REPLY);
@@ -420,16 +474,19 @@ async function clarify(input: BuildReplyInput): Promise<RouteResult> {
 }
 
 async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
-  const { db, tenantId, intent, anchored } = input;
+  const { db, tenantId, intent, anchored, trace, holdingReplyMessage, anchorFromThisMessage } = input;
   if (!anchored) {
     throw new Error("runAnchoredIntent called without an anchored package");
   }
 
   const prefixed = (text: string) =>
-    withAnchorContext(text, input.anchorFromThisMessage, anchored.name);
+    withAnchorContext(text, anchorFromThisMessage, anchored.name);
 
   try {
     const outcome = await runToolIntent(db, tenantId, anchored, asToolIntent(intent));
+
+    // Record what we actually did so the trace has a faithful log.
+    trace.toolCalls.push({ name: intent, input: { packageId: anchored.id }, output: outcome });
 
     // A single message often carries two questions ("when is it, and how
     // much?"). Answering one and ignoring the other reads as not listening.
@@ -437,15 +494,16 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
     if (secondary && secondary !== intent && isToolIntent(secondary) && !outcome.escalateReason) {
       try {
         const extra = await runToolIntent(db, tenantId, anchored, secondary);
+        trace.toolCalls.push({ name: secondary, input: { packageId: anchored.id }, output: extra });
         if (!extra.escalateReason) {
-          return {
+          return withTrace({
             replyText: prefixed(`${outcome.text}\n\n${extra.text}`),
             nextPackageId: anchored.id,
             nextPendingClarificationCount: 0,
             escalateReason: null,
             escalateSeverity: null,
             sourceChunkIds: null,
-          };
+          }, trace);
         }
       } catch {
         // The primary answer already stands; a failing follow-on question is
@@ -453,7 +511,7 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
       }
     }
 
-    return {
+    return withTrace({
       // A soft-escalating outcome (e.g. "no upcoming batches") still names
       // the specific package in its own text, so the prefix still applies;
       // only the generic tool_error holding message below is exempt.
@@ -463,7 +521,7 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
       escalateReason: outcome.escalateReason,
       escalateSeverity: outcome.escalateReason ? severityFor(outcome.escalateReason) : null,
       sourceChunkIds: null,
-    };
+    }, trace);
   } catch (error) {
     console.error("routeMessage: tool layer threw", {
       tenantId,
@@ -471,62 +529,69 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
       intent,
       error,
     });
-    return {
+    return withTrace({
       replyText: escalationReply("tool_error", input.holdingReplyMessage),
       nextPackageId: anchored.id,
       nextPendingClarificationCount: 0,
       escalateReason: "tool_error",
       escalateSeverity: severityFor("tool_error"),
       sourceChunkIds: null,
-    };
+    }, trace);
   }
 }
 
 async function answerFromKnowledge(input: BuildReplyInput): Promise<RouteResult> {
-  const { db, tenantId, rag, anchored, state, text, holdingReplyMessage } = input;
+  const { db, tenantId, rag, anchored, state, text, holdingReplyMessage, trace } = input;
 
   try {
-    const outcome = await generateKnowledgeAnswer(db, tenantId, rag.embedder, rag.answerGenerator, {
+    const { result, llmUsage, retrievedChunkIds, retrievalTopScore } = await generateKnowledgeAnswer(db, tenantId, rag.embedder, rag.answerGenerator, {
       question: text,
       packageId: anchored?.id ?? null,
       packageName: anchored?.name ?? null,
     });
 
-    if (outcome.kind === "answered") {
-      return {
+    // Populate the trace accumulator so the worker sees what the pipeline
+    // actually did. Done here, not in generateKnowledgeAnswer, because the
+    // router decides what the intent label is.
+    trace.retrievedChunkIds = retrievedChunkIds;
+    trace.retrievalTopScore = retrievalTopScore;
+    trace.llmUsage = llmUsage ?? null;
+
+    if (result.kind === "answered") {
+      return withTrace({
         replyText: anchored
-          ? withAnchorContext(outcome.text, input.anchorFromThisMessage, anchored.name)
-          : outcome.text,
+          ? withAnchorContext(result.text, input.anchorFromThisMessage, anchored.name)
+          : result.text,
         nextPackageId: anchored?.id ?? state.packageId,
         nextPendingClarificationCount: 0,
         escalateReason: null,
         escalateSeverity: null,
-        sourceChunkIds: outcome.sourceIds,
-      };
+        sourceChunkIds: result.sourceIds,
+      }, trace);
     }
 
-    return {
-      replyText: escalationReply(outcome.reason, holdingReplyMessage),
+    return withTrace({
+      replyText: escalationReply(result.reason, holdingReplyMessage),
       nextPackageId: anchored?.id ?? state.packageId,
       nextPendingClarificationCount: 0,
-      escalateReason: outcome.reason,
-      escalateSeverity: severityFor(outcome.reason),
+      escalateReason: result.reason,
+      escalateSeverity: severityFor(result.reason),
       sourceChunkIds: null,
-    };
+    }, trace);
   } catch (error) {
     console.error("routeMessage: knowledge answer pipeline threw", {
       tenantId,
       packageId: anchored?.id ?? null,
       error,
     });
-    return {
+    return withTrace({
       replyText: escalationReply("tool_error", holdingReplyMessage),
       nextPackageId: anchored?.id ?? state.packageId,
       nextPendingClarificationCount: 0,
       escalateReason: "tool_error",
       escalateSeverity: severityFor("tool_error"),
       sourceChunkIds: null,
-    };
+    }, trace);
   }
 }
 
@@ -648,6 +713,7 @@ async function routeWithKeywordFallback(
   text: string,
   rag: RagDeps,
   catalogue: Catalogue,
+  trace: RouteTraceData,
 ): Promise<RouteResult> {
   const intent = classifyIntent(text);
   const { matched } = matchPackages(text, catalogue);
@@ -673,7 +739,8 @@ async function routeWithKeywordFallback(
     state,
     text,
     holdingReplyMessage,
+    trace,
   });
 
-  return outcome;
+  return withTrace(outcome, trace);
 }

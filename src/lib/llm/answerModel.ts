@@ -10,11 +10,7 @@ import { ANSWER_SYSTEM_PROMPT, buildAnswerPrompt } from "./prompts";
 // and validate against the Zod schema before returning.
 const ANSWER_MODEL = "deepseek-chat";
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
-// Invariant: structured answer generation stays at or below 0.3 so phrasing
-// stays close to the retrieved chunks rather than drifting.
 const ANSWER_TEMPERATURE = 0.2;
-const ANSWER_TIMEOUT_MS = 20_000;
-const ANSWER_MAX_RETRIES = 2;
 
 export type AnswerGeneratorInput = {
   question: string;
@@ -22,7 +18,18 @@ export type AnswerGeneratorInput = {
   chunks: RetrievedChunk[];
 };
 
-export type AnswerGenerator = (input: AnswerGeneratorInput) => Promise<GeneratedAnswer>;
+// Wraps the parsed answer with provider-side usage metadata so the worker
+// can persist token counts into message_traces without re-querying the API.
+export type AnswerGeneratorOutput = {
+  answer: GeneratedAnswer;
+  usage: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+  };
+};
+
+export type AnswerGenerator = (input: AnswerGeneratorInput) => Promise<AnswerGeneratorOutput>;
 
 export function createDeepSeekAnswerGenerator(apiKey: string): AnswerGenerator {
   const client = new OpenAI({
@@ -52,6 +59,14 @@ export function createDeepSeekAnswerGenerator(apiKey: string): AnswerGenerator {
     if (!parsed.success) {
       throw new Error("DeepSeek answer failed schema validation: " + parsed.error.message);
     }
-    return parsed.data;
+    const usage = completion.usage;
+    return {
+      answer: parsed.data,
+      usage: {
+        model: ANSWER_MODEL,
+        inputTokens: usage?.prompt_tokens ?? null,
+        outputTokens: usage?.completion_tokens ?? null,
+      },
+    };
   };
 }

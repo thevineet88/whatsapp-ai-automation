@@ -8,6 +8,8 @@ import {
   type UnderstandingClassifier,
   createDeepSeekUnderstandingClassifier,
 } from "@/lib/llm/understanding";
+import { findInboundMessageId, persistMessageTrace } from "@/lib/observability/persistTrace";
+import { reportError } from "@/lib/observability/sentry";
 import type { WhatsAppInboundJob } from "@/lib/queue/whatsappInboundQueue";
 import { type Embedder, createJinaEmbedder } from "@/lib/rag/embedder";
 import { type ConversationStatus, routeMessage } from "@/lib/router/route";
@@ -18,6 +20,17 @@ import { and, asc, eq } from "drizzle-orm";
 // How many prior turns the understanding pass sees. Enough to resolve a
 // follow up ("and the price?") without paying for the whole thread.
 const HISTORY_TURNS = 8;
+
+// Timing labels for latency debugging. Every stage logs its elapsed ms so
+// you can spot whether the delay is lock contention, a slow LLM call, or
+// a hang in retrieval.
+type StageTimer = { label: string; start: number };
+function startStage(label: string): StageTimer {
+  return { label, start: Date.now() };
+}
+function logStage(t: StageTimer): void {
+  console.log("wa handler: stage done", { stage: t.label, elapsedMs: Date.now() - t.start });
+}
 
 export type AnswerMessageDeps = {
   db: Db;
@@ -51,9 +64,11 @@ export async function handleInboundMessage(
   }
 
   const scoped = scopedDb(db, tenantId);
+  const conversationTimer = startStage("conversation_lookup");
   const [existingConversation] = await scoped.conversations.findMany(
     eq(conversations.travellerPhone, message.from),
   );
+  logStage(conversationTimer);
 
   const conversation =
     existingConversation ??
@@ -75,6 +90,7 @@ export async function handleInboundMessage(
   let lockAcquired = false;
   let lockKey: string | null = null;
   if (redisUrl) {
+    const lockTimer = startStage("redis_lock");
     redis = createRedis(redisUrl);
     lockKey = `wa:lock:${tenantId}:${message.from}`;
     const LOCK_TTL_SECONDS = 10;
@@ -95,6 +111,7 @@ export async function handleInboundMessage(
       }
       await new Promise((r) => setTimeout(r, LOCK_POLL_INTERVAL_MS));
     }
+    logStage(lockTimer);
     if (!lockAcquired) {
       console.error("wa handler: per-traveller lock timeout, re-queuing", {
         tenantId,
@@ -198,19 +215,58 @@ export async function handleInboundMessage(
       content: row.content,
     }));
 
-  const result = await routeMessage(
-    db,
-    tenantId,
-    {
-      packageId: conversation.packageId,
-      pendingClarificationCount: conversation.pendingClarificationCount,
-      status: conversation.status,
-      history,
-    },
-    holdingReplyMessage,
-    inboundContent,
-    { embedder, answerGenerator, understandingClassifier },
-  );
+  const traceStart = new Date();
+  let result;
+  try {
+    const routeTimer = startStage("routeMessage");
+    result = await routeMessage(
+      db,
+      tenantId,
+      {
+        packageId: conversation.packageId,
+        pendingClarificationCount: conversation.pendingClarificationCount,
+        status: conversation.status,
+        history,
+      },
+      holdingReplyMessage,
+      inboundContent,
+      { embedder, answerGenerator, understandingClassifier },
+    );
+    logStage(routeTimer);
+  } catch (error) {
+    // routeMessage should never throw (it catches and turns errors into
+    // escalation replies), but a logged-in trace is the only place we'd
+    // see a programmer error. Report to Sentry and let the outer handler
+    // rethrow to BullMQ for retry.
+    reportError(error, { tenantId, conversationId: conversation.id, phase: "routeMessage" });
+    throw error;
+  }
+
+  // Persist a trace row for every inbound message. Wrapped in its own
+  // try/catch so a write failure can't take down the rest of the handler -
+  // the trace is diagnostic, the reply is the actual product.
+  try {
+    const inboundId = await findInboundMessageId(db, message.id);
+    if (inboundId) {
+      await persistMessageTrace({
+        db,
+        tenantId,
+        conversationId: conversation.id,
+        inboundMessageId: inboundId,
+        routerResult: result,
+        intent: result.trace?.intent ?? "unknown",
+        configVersion: activeConfig?.version ?? 0,
+        llmUsage: result.trace?.llmUsage ?? null,
+        retrievedChunkIds: result.trace?.retrievedChunkIds ?? [],
+        retrievalTopScore: result.trace?.retrievalTopScore ?? null,
+        toolCalls: result.trace?.toolCalls ?? [],
+        startTime: traceStart,
+        result: result.escalateReason ? "escalated" : "answered",
+      });
+    }
+  } catch (traceError) {
+    console.error("wa handler: trace persistence failed", { tenantId, error: traceError });
+  }
 
   // Durable state is written before the network call, not after. A failed
   // send used to throw past the escalation insert and the conversation
@@ -244,7 +300,9 @@ export async function handleInboundMessage(
 
   const accessToken = requireEnv("WHATSAPP_ACCESS_TOKEN");
   const client = createClient(accessToken, account.phoneNumberId);
+  const sendTimer = startStage("whatsapp_send");
   const sendResult = await client.sendTextMessage(message.from, result.replyText);
+  logStage(sendTimer);
 
   if (!sendResult.ok) {
     // The bot is mute: a bad token, a revoked number, an outage. That is an

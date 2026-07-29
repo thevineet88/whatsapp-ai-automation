@@ -68,7 +68,7 @@ export type UnderstandingInput = {
   catalogue: Catalogue;
 };
 
-export type UnderstandingClassifier = (input: UnderstandingInput) => Promise<MessageUnderstanding>;
+export type UnderstandingClassifier = (input: UnderstandingInput) => Promise<UnderstandingOutput>;
 
 export function buildUnderstandingPrompt(input: UnderstandingInput): string {
   const history =
@@ -87,6 +87,15 @@ ${anchor}
 
 New traveller message: "${input.message}"`;
 }
+
+export type UnderstandingOutput = {
+  understanding: MessageUnderstanding;
+  usage: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+  };
+};
 
 export function createDeepSeekUnderstandingClassifier(apiKey: string): UnderstandingClassifier {
   const client = new OpenAI({
@@ -117,6 +126,14 @@ export function createDeepSeekUnderstandingClassifier(apiKey: string): Understan
     if (!parsed.success) {
       throw new Error("DeepSeek understanding failed schema validation: " + parsed.error.message);
     }
-    return parsed.data;
+    const usage = completion.usage;
+    return {
+      understanding: parsed.data,
+      usage: {
+        model: UNDERSTANDING_MODEL,
+        inputTokens: usage?.prompt_tokens ?? null,
+        outputTokens: usage?.completion_tokens ?? null,
+      },
+    };
   };
 }

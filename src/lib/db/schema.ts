@@ -374,6 +374,63 @@ export const processedWebhooks = pgTable(
   (table) => [uniqueIndex("processed_webhooks_meta_message_id_idx").on(table.metaMessageId)],
 );
 
+// The durable per-message trace required by the answer pipeline step 9:
+// tool calls, retrieved chunks, prompt/config version, model, token counts,
+// latency. Written from handleInboundMessage for every inbound message,
+// regardless of whether the outbound send succeeds, so a bot mute doesn't
+// erase the record. The Langfuse UI is the LLM-centric view; this table is
+// the SQL-queryable view (by conversation, time range, escalation reason).
+export const messageTraces = pgTable(
+  "message_traces",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id),
+    intent: text("intent").notNull(),
+    anchorPackageId: uuid("anchor_package_id").references(() => packages.id),
+    // Array of {name, input, output} per tool the router invoked. Empty
+    // when the message was a single LLM call or an escalation with no tool.
+    toolCalls: jsonb("tool_calls")
+      .$type<{ name: string; input: unknown; output: unknown }[]>()
+      .notNull()
+      .default([]),
+    retrievedChunkIds: jsonb("retrieved_chunk_ids").$type<string[]>().notNull().default([]),
+    // Pinned to the active tenant config version when the trace was written,
+    // so a trace is reproducible by knowing what the system believed at that
+    // point.
+    promptVersion: text("prompt_version").notNull(),
+    configVersion: integer("config_version").notNull(),
+    llmModel: text("llm_model"),
+    llmInputTokens: integer("llm_input_tokens"),
+    llmOutputTokens: integer("llm_output_tokens"),
+    retrievalTopScore: integer("retrieval_top_score"),
+    latencyMs: integer("latency_ms").notNull(),
+    // Terminal outcome of the routing pipeline for this message.
+    result: text("result").notNull(),
+    escalationReason: text("escalation_reason"),
+    // Chunks the answer actually cited. Null for tool-served replies and for
+    // escalations.
+    sourceChunkIds: jsonb("source_chunk_ids").$type<string[] | null>(),
+    // Opaque id handed back by Langfuse so this row links into the trace UI.
+    langfuseTraceId: text("langfuse_trace_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("message_traces_tenant_id_idx").on(table.tenantId),
+    index("message_traces_conversation_id_idx").on(table.conversationId),
+    index("message_traces_message_id_idx").on(table.messageId),
+    index("message_traces_result_idx").on(table.result),
+    index("message_traces_created_at_idx").on(table.createdAt),
+  ],
+);
+
 export const tenantsRelations = relations(tenants, ({ many }) => ({
   whatsappAccounts: many(whatsappAccounts),
   conversations: many(conversations),
@@ -423,5 +480,16 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   conversation: one(conversations, {
     fields: [messages.conversationId],
     references: [conversations.id],
+  }),
+}));
+
+export const messageTracesRelations = relations(messageTraces, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [messageTraces.conversationId],
+    references: [conversations.id],
+  }),
+  message: one(messages, {
+    fields: [messageTraces.messageId],
+    references: [messages.id],
   }),
 }));

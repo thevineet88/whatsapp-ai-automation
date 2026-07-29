@@ -3,7 +3,7 @@ import { validateCitations } from "@/lib/guardrails/citationValidation";
 import { passesRetrievalGate } from "@/lib/guardrails/retrievalGate";
 import type { Embedder } from "@/lib/rag/embedder";
 import { hybridRetrieve } from "@/lib/rag/retrieval";
-import type { AnswerGenerator } from "./answerModel";
+import type { AnswerGenerator, AnswerGeneratorOutput } from "./answerModel";
 
 export type KnowledgeAnswerResult =
   | { kind: "answered"; text: string; sourceIds: string[] }
@@ -14,13 +14,21 @@ export type KnowledgeAnswerResult =
 // validates every cited source against what was actually retrieved. Any
 // failure at any stage returns an escalation reason rather than a reply -
 // there is no partial or best-effort answer.
+//
+// Returns the trace-relevant retrieval metadata alongside the result so the
+// router can attach it to the final RouteResult without re-querying.
 export async function generateKnowledgeAnswer(
   db: Db,
   tenantId: string,
   embedder: Embedder,
   answerGenerator: AnswerGenerator,
   input: { question: string; packageId: string | null; packageName: string | null },
-): Promise<KnowledgeAnswerResult> {
+): Promise<{
+  result: KnowledgeAnswerResult;
+  llmUsage?: AnswerGeneratorOutput["usage"];
+  retrievedChunkIds: string[];
+  retrievalTopScore: number | null;
+}> {
   const chunks = await hybridRetrieve(db, tenantId, embedder, input.question, {
     // No anchor means search the whole knowledge base, not just the general
     // chunks. Passing null here would filter to package_id IS NULL and hide
@@ -28,28 +36,31 @@ export async function generateKnowledgeAnswer(
     packageId: input.packageId ?? undefined,
   });
 
+  const topScore = chunks.length > 0 ? chunks[0].score : null;
+  const chunkIds = chunks.map((c) => c.id);
+
   if (!passesRetrievalGate(chunks)) {
-    return { kind: "escalate", reason: "retrieval_low_confidence" };
+    return { result: { kind: "escalate", reason: "retrieval_low_confidence" }, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
   }
 
-  let answer: Awaited<ReturnType<AnswerGenerator>>;
+  let output: AnswerGeneratorOutput;
   try {
-    answer = await answerGenerator({
+    output = await answerGenerator({
       question: input.question,
       packageName: input.packageName,
       chunks,
     });
   } catch {
-    return { kind: "escalate", reason: "llm_error" };
+    return { result: { kind: "escalate", reason: "llm_error" }, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
   }
 
-  if (answer.needsHuman || !answer.answerText) {
-    return { kind: "escalate", reason: "llm_needs_human" };
+  if (output.answer.needsHuman || !output.answer.answerText) {
+    return { result: { kind: "escalate", reason: "llm_needs_human" }, llmUsage: output.usage, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
   }
 
-  if (!validateCitations(answer, chunks)) {
-    return { kind: "escalate", reason: "citation_invalid" };
+  if (!validateCitations(output.answer, chunks)) {
+    return { result: { kind: "escalate", reason: "citation_invalid" }, llmUsage: output.usage, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
   }
 
-  return { kind: "answered", text: answer.answerText, sourceIds: answer.sourceIds };
+  return { result: { kind: "answered", text: output.answer.answerText, sourceIds: output.answer.sourceIds }, llmUsage: output.usage, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
 }
