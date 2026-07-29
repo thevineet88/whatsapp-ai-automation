@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "messages_meta_message_id_idx" ON "messages" USING btree ("meta_message_id");

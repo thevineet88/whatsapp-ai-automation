@@ -7,10 +7,9 @@ import { createDb } from "../src/lib/db/client";
 import { packages, tenants } from "../src/lib/db/schema";
 import { seedSamyati } from "../src/lib/db/seed";
 import type { Embedder } from "../src/lib/rag/embedder";
+import { EMBEDDING_DIMENSIONS } from "../src/lib/db/schema";
 import { ingestKnowledgeSource, ingestKnowledgeSources } from "../src/lib/rag/ingest";
 import { hybridRetrieve } from "../src/lib/rag/retrieval";
-
-const EMBEDDING_DIMENSIONS = 1536;
 
 // Deterministic stand-in for a real embedding model: hashes each word into
 // one of the vector's dimensions and L2-normalizes. No network call, so it

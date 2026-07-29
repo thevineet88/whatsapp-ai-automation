@@ -14,7 +14,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "db:seed": "tsx src/lib/db/seed.ts",
-    "db:ingest": "tsx src/lib/rag/ingestSeed.ts"
+    "db:ingest": "tsx src/lib/rag/ingestSeed.ts",
+    "db:seed:aliases": "tsx src/lib/db/seedAliases.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.22",
@@ -23,6 +24,7 @@
     "drizzle-orm": "^0.44.2",
     "ioredis": "^5.4.2",
     "next": "^15.5.4",
+    "openai": "^7.1.0",
     "pg": "^8.13.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

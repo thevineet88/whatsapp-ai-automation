@@ -1,7 +1,7 @@
 import { whatsappWebhookPayloadSchema } from "@/lib/core/webhook";
 import type { Db } from "@/lib/db/client";
 import { createDb } from "@/lib/db/client";
-import { whatsappAccounts } from "@/lib/db/schema";
+import { processedWebhooks, whatsappAccounts } from "@/lib/db/schema";
 import {
   type WhatsappInboundQueue,
   createWhatsappInboundQueue,
@@ -109,9 +109,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         for (const message of messages) {
+          // Two-layer dedupe. Redis is the fast path, but it is a cache: a
+          // flush, an eviction or a failover would silently reopen the door
+          // to double processing, and invariant 7 says duplicates must be
+          // impossible, not unlikely. The unique index on
+          // processed_webhooks.meta_message_id is the durable authority.
           const dedupeKey = `wa:dedupe:${message.id}`;
           const wasSet = await dedupeRedis.set(dedupeKey, "1", "EX", DEDUPE_TTL_SECONDS, "NX");
           if (wasSet !== "OK") {
+            continue;
+          }
+
+          const claimed = await db
+            .insert(processedWebhooks)
+            .values({ tenantId: account.tenantId, metaMessageId: message.id })
+            .onConflictDoNothing()
+            .returning();
+
+          if (claimed.length === 0) {
             continue;
           }
 

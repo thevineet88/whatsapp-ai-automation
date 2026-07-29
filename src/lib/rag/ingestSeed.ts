@@ -5,7 +5,7 @@ import type { KnowledgeSourceInput } from "@/lib/core/knowledge";
 import { createDb } from "@/lib/db/client";
 import { packages, tenants } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { createOpenAIEmbedder } from "./embedder";
+import { createJinaEmbedder } from "./embedder";
 import { ingestKnowledgeSources } from "./ingest";
 import { PACKAGE_KNOWLEDGE_CONTENT } from "./knowledgeContent";
 
@@ -14,10 +14,10 @@ import { PACKAGE_KNOWLEDGE_CONTENT } from "./knowledgeContent";
 // `npm run db:seed` first, then `npm run db:ingest`.
 async function main() {
   const connectionString = requireEnv("DATABASE_URL");
-  const apiKey = requireEnv("OPENAI_API_KEY");
+  const apiKey = requireEnv("JINA_API_KEY");
 
   const db = createDb(connectionString);
-  const embedder = createOpenAIEmbedder(apiKey);
+  const embedder = createJinaEmbedder(apiKey);
 
   const [tenant] = await db
     .select()

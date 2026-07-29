@@ -29,6 +29,41 @@
       "when": 1785262861630,
       "tag": "0003_known_veda",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785263871946,
+      "tag": "0004_clumsy_molten_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785296045059,
+      "tag": "0005_old_callisto",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785297098538,
+      "tag": "0006_overjoyed_romulus",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785298054217,
+      "tag": "0007_closed_loki",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785307809135,
+      "tag": "0008_small_karma",
+      "breakpoints": true
     }
   ]
 }

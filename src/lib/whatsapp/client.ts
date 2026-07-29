@@ -60,6 +60,32 @@ export function createWhatsAppClient(config: WhatsAppClientConfig) {
 }
 export type WhatsAppClient = ReturnType<typeof createWhatsAppClient>;
 
+// Confirms the token is well formed, unexpired, and actually authorised for
+// this phone number id. Kept separate from the client so the send surface
+// stays minimal. Called at worker startup: an invalid token makes every
+// reply fail identically, and working that out from a pile of failed jobs is
+// far slower than being told once at boot.
+export async function checkWhatsAppCredentials(
+  config: Pick<WhatsAppClientConfig, "accessToken" | "phoneNumberId" | "baseUrl" | "fetchImpl">,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const baseUrl = config.baseUrl ?? `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+
+  try {
+    const res = await fetchImpl(`${baseUrl}/${config.phoneNumberId}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${config.accessToken}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      return { ok: false, error: `${res.status} ${await res.text()}` };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function fetchWithRetry(
   fetchImpl: typeof fetch,
   url: string,
