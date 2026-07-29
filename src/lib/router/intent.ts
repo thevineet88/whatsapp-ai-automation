@@ -43,6 +43,14 @@ const ESCALATION_KEYWORDS: { reason: EscalationReason; keywords: string[] }[] = 
       "senior citizen",
       "elderly",
       "old age",
+      "years old",
+      "years of age",
+      "my age",
+      "my dad",
+      "my mom",
+      "my mother",
+      "my father",
+      "my parents",
       "medical condition",
       "health condition",
       "fitness level",
@@ -54,6 +62,18 @@ const ESCALATION_KEYWORDS: { reason: EscalationReason; keywords: string[] }[] = 
       "injured",
       "surgery",
       "diabet",
+      "medication",
+      "medicine",
+      "children",
+      "kids",
+      "kid",
+      "child",
+      "safe for",
+      "suitable for",
+      "can my",
+      "manage the climb",
+      "physically",
+      "trek possible",
     ],
   },
   {
@@ -141,11 +161,27 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "seats available",
       "seats left",
       "how many seats",
+      "kab hai",
+      "kab ja",
+      "kab tak",
+      "kab start",
     ],
   },
   {
     type: "price",
-    keywords: ["price", "cost", "how much", "starting from", "rate", "fare", "charges"],
+    keywords: [
+      "price",
+      "cost",
+      "how much",
+      "starting from",
+      "rate",
+      "fare",
+      "charges",
+      "kitna",
+      "kitna hai",
+      "kitne ka hai",
+      "kya kharcha",
+    ],
   },
   {
     type: "inclusions_exclusions",
@@ -160,6 +196,9 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "what's not included",
       "included in the package",
       "package include",
+      "kya include",
+      "kya include hai",
+      "kya included",
     ],
   },
   {
@@ -171,6 +210,9 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "daily plan",
       "schedule of the trip",
       "plan for each day",
+      "itinerary kya",
+      "day wise kya",
+      "plan kya hai",
     ],
   },
   {
@@ -184,6 +226,11 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "monsoon",
       "is it cold",
       "climate",
+      "weather kaisa",
+      "weather kya",
+      "sabse accha time",
+      "monsoon mein",
+      "cold hai",
     ],
   },
   {
@@ -197,6 +244,21 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "starting point",
       "departure city",
       "where does it start",
+      "train name",
+      "which train",
+      "train number",
+      "train no",
+      "bus number",
+      "flight name",
+      "which flight",
+      "travel mode",
+      "by which train",
+      "kahan se",
+      "kaha se",
+      "kaha se start",
+      "boarding kahan",
+      "train ka naam",
+      "kon si train",
     ],
   },
   {
@@ -208,6 +270,10 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "trip length",
       "how long is the trip",
       "days and nights",
+      "kitne din",
+      "kitni raat",
+      "kitne din ka",
+      "kitna time",
     ],
   },
   {
@@ -220,6 +286,9 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "payment plan",
       "first installment",
       "advance amount",
+      "installment kaise",
+      "payment plan kya",
+      "advance kitna",
     ],
   },
   {
@@ -230,6 +299,9 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "how can i book",
       "booking process",
       "how does booking work",
+      "book kaise",
+      "kaise book kare",
+      "booking kaise kare",
     ],
   },
   {
@@ -242,17 +314,34 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "cancellation rules",
       "what if i cancel",
       "cancellation terms",
+      "cancel kaise",
+      "cancellation kaise",
+      "refund milega",
     ],
   },
 ];
 
+// Deterministic pre-gate that runs before the LLM understanding pass. It is
+// the fail-safe half of the escalation policy: a hit here escalates without
+// any model call at all, so the highest-risk topics never depend on a
+// network round trip or on the model's judgement. The model can add
+// escalations on top of this, never take one away.
+export function classifyEscalationKeywords(text: string): EscalationReason | null {
+  const normalized = text.toLowerCase();
+  for (const { reason, keywords } of ESCALATION_KEYWORDS) {
+    if (keywords.some((keyword) => normalized.includes(keyword))) {
+      return reason;
+    }
+  }
+  return null;
+}
+
 export function classifyIntent(text: string): ClassifiedIntent {
   const normalized = text.toLowerCase();
 
-  for (const { reason, keywords } of ESCALATION_KEYWORDS) {
-    if (keywords.some((keyword) => normalized.includes(keyword))) {
-      return { kind: "escalate", reason };
-    }
+  const escalationReason = classifyEscalationKeywords(text);
+  if (escalationReason) {
+    return { kind: "escalate", reason: escalationReason };
   }
 
   for (const { type, keywords } of KNOWN_INTENT_KEYWORDS) {

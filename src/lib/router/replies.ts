@@ -39,6 +39,27 @@ export function clarifyPackageReply(candidates: Pick<PackageRow, "name">[]): str
   return `Which package are you asking about? We currently run:\n${list}`;
 }
 
+// Used when the message plausibly points at a couple of specific trips.
+// Naming just those beats listing the whole catalogue back at someone who
+// already told us roughly what they want.
+export function clarifyBetweenCandidatesReply(candidates: Pick<PackageRow, "name">[]): string {
+  const list = candidates.map(formatPackageListLine).join("\n");
+  return `Just to make sure I give you the right details, which one did you mean?\n${list}`;
+}
+
+export const GREETING_REPLY =
+  "Hello! Welcome to Samyati Holidays. I can help with trip dates, pricing, itineraries, inclusions and how booking works. Which trip are you interested in, or would you like to see what we're running?";
+
+export function browsePackagesReply(candidates: Pick<PackageRow, "name">[]): string {
+  const list = candidates.map(formatPackageListLine).join("\n");
+  return `Here's what we're currently running:\n${list}\n\nTell me which one catches your eye and I'll share dates, pricing and the day-by-day plan.`;
+}
+
+export function notSupportedReply(candidates: Pick<PackageRow, "name">[]): string {
+  const list = candidates.map(formatPackageListLine).join("\n");
+  return `We don't currently run that destination. Here's what we do offer:\n${list}\n\nLet me know which one catches your eye and I'll share dates and pricing.`;
+}
+
 export function batchesReply(
   pkg: Pick<PackageRow, "name">,
   upcoming: BatchWithAvailability[],
@@ -52,6 +73,44 @@ export function batchesReply(
   });
 
   return `Upcoming batches for ${pkg.name}:\n${lines.join("\n")}`;
+}
+
+// Answer for someone who named a trip without asking anything specific.
+// Every figure comes from the tool layer; nothing here is generated.
+export function packageOverviewReply(
+  pkg: Pick<
+    PackageRow,
+    "name" | "durationDays" | "durationNights" | "departurePoint" | "travelMode" | "highlights"
+  >,
+  upcoming: BatchWithAvailability[],
+): string {
+  const lines = [
+    `${pkg.name} is a ${pkg.durationDays} day, ${pkg.durationNights} night trip departing from ${pkg.departurePoint} by ${pkg.travelMode}.`,
+  ];
+
+  const highlights = pkg.highlights.slice(0, 4);
+  if (highlights.length > 0) {
+    lines.push("", "Highlights:", ...highlights.map((h) => `- ${h}`));
+  }
+
+  const open = upcoming.filter((b) => !b.isFull);
+  if (open.length > 0) {
+    const next = open[0];
+    lines.push(
+      "",
+      `Next departure: ${formatDate(next.departureDate)}, starting from ${formatRupees(next.startingPricePaise)} per person (${next.seatsAvailable} seats left).`,
+    );
+    if (open.length > 1) {
+      lines.push(`We have ${open.length} upcoming batches in total.`);
+    }
+  } else if (upcoming.length > 0) {
+    lines.push("", "All currently listed batches are sold out, so let me check the next dates.");
+  } else {
+    lines.push("", "No upcoming batches are listed right now, so let me check the next dates.");
+  }
+
+  lines.push("", "Want the full day-by-day itinerary, inclusions, or all upcoming dates?");
+  return lines.join("\n");
 }
 
 export function noUpcomingBatchesReply(pkg: Pick<PackageRow, "name">): string {
@@ -144,8 +203,6 @@ export function escalationReply(reason: string, holdingReplyMessage: string): st
   switch (reason) {
     case "booking_or_payment":
       return BOOKING_ESCALATION_REPLY;
-    case "best_season_no_kb":
-      return "Good question, let me check the seasonal details with our team and get back to you shortly.";
     default:
       return holdingReplyMessage;
   }

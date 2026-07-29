@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { CatalogueEntry } from "../src/lib/router/catalogue";
 import { classifyIntent } from "../src/lib/router/intent";
 import { resolvePackageFromText } from "../src/lib/router/packageMatch";
 
@@ -79,25 +80,94 @@ describe("classifyIntent", () => {
     });
   });
 
+  it("classifies transport-mode questions as departure_point", () => {
+    expect(classifyIntent("What is the train name?")).toEqual({
+      kind: "known",
+      type: "departure_point",
+    });
+    expect(classifyIntent("Which train is it?")).toEqual({
+      kind: "known",
+      type: "departure_point",
+    });
+    expect(classifyIntent("Which flight?")).toEqual({ kind: "known", type: "departure_point" });
+  });
+
   it("returns unclassified for messages that match nothing", () => {
     expect(classifyIntent("Good morning!")).toEqual({ kind: "unclassified" });
   });
 });
 
 describe("resolvePackageFromText", () => {
-  const packages = [
-    { id: "1", name: "Kedarnath-Badrinath Yatra", slug: "kedarnath-badrinath-yatra" },
-    { id: "2", name: "Gokarna-Murudeshwar", slug: "gokarna-murudeshwar" },
-    { id: "3", name: "Sikkim-Darjeeling", slug: "sikkim-darjeeling" },
+  function entry(overrides: Partial<CatalogueEntry> & { id: string; name: string; slug: string }) {
+    return {
+      categories: ["spiritual"],
+      durationDays: 5,
+      durationNights: 4,
+      departurePoint: "Mumbai",
+      places: [],
+      aliases: [],
+      ...overrides,
+    } satisfies CatalogueEntry;
+  }
+
+  const catalogue: CatalogueEntry[] = [
+    entry({ id: "1", name: "Kedarnath-Badrinath Yatra", slug: "kedarnath-badrinath-yatra" }),
+    entry({ id: "2", name: "Gokarna-Murudeshwar", slug: "gokarna-murudeshwar" }),
+    entry({ id: "3", name: "Sikkim-Darjeeling", slug: "sikkim-darjeeling" }),
   ];
 
   it("matches a package mentioned by a distinctive keyword", () => {
-    expect(resolvePackageFromText("what's the price for Kedarnath?", packages)?.id).toBe("1");
-    expect(resolvePackageFromText("tell me about gokarna trip", packages)?.id).toBe("2");
-    expect(resolvePackageFromText("darjeeling tea gardens sound fun", packages)?.id).toBe("3");
+    expect(resolvePackageFromText("what's the price for Kedarnath?", catalogue)?.id).toBe("1");
+    expect(resolvePackageFromText("tell me about gokarna trip", catalogue)?.id).toBe("2");
+    expect(resolvePackageFromText("darjeeling tea gardens sound fun", catalogue)?.id).toBe("3");
   });
 
   it("returns null when no package is mentioned", () => {
-    expect(resolvePackageFromText("what's the price?", packages)).toBeNull();
+    expect(resolvePackageFromText("what's the price?", catalogue)).toBeNull();
+  });
+
+  it("matches a word from the name even when the slug is a shortened form of it", () => {
+    // Real production data: slug "ujjain-indore" drops "omkareshwar" from the
+    // name, so matching must not depend on the slug spelling out every word.
+    const withShortenedSlug = [
+      ...catalogue,
+      entry({ id: "4", name: "Ujjain-Indore-Omkareshwar", slug: "ujjain-indore" }),
+    ];
+    expect(
+      resolvePackageFromText("what's the price of omkareshwar trip", withShortenedSlug)?.id,
+    ).toBe("4");
+  });
+
+  it("matches a place the itinerary visits that the name never mentions", () => {
+    const withPlaces = [
+      ...catalogue,
+      entry({
+        id: "5",
+        name: "Ayodhya-Kashi-Prayagraj",
+        slug: "ayodhya-kashi-prayagraj",
+        places: ["varanasi", "sangam"],
+      }),
+    ];
+    expect(resolvePackageFromText("does any trip go to varanasi", withPlaces)?.id).toBe("5");
+  });
+
+  it("matches a curated alias that appears nowhere in the package's own fields", () => {
+    const withAlias = [
+      entry({
+        id: "6",
+        name: "Kedarnath-Badrinath Yatra",
+        slug: "kedarnath-badrinath-yatra",
+        aliases: ["char dham", "chardham"],
+      }),
+    ];
+    expect(resolvePackageFromText("planning char dham this year", withAlias)?.id).toBe("6");
+  });
+
+  it("stays null when a term matches more than one package, instead of guessing", () => {
+    const ambiguous = [
+      entry({ id: "7", name: "Kerala Trip", slug: "kerala", places: ["munnar"] }),
+      entry({ id: "8", name: "Kerala Backwaters", slug: "kerala-backwaters", places: ["munnar"] }),
+    ];
+    expect(resolvePackageFromText("how much for munnar", ambiguous)).toBeNull();
   });
 });
