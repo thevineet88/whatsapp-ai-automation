@@ -1,4 +1,14 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-npx biome check --write --no-errors-on-unmatched --files
+# Run biome lint:fix on staged source files
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|json|md|yml|yaml)$' || true)
+
+if [ -z "$FILES" ]; then
+  exit 0
+fi
+
+echo "$FILES" | xargs npx biome check --write --no-errors-on-unmatched
+
+# Re-stage any auto-fixed files
+echo "$FILES" | xargs git add --
