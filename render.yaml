@@ -8,3 +8,6 @@ services:
     startCommand: npm run start
     healthCheckPath: /api/health
     autoDeploy: true
+    envVars:
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
