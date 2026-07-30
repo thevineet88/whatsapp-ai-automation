@@ -71,6 +71,27 @@
       "when": 1785339631012,
       "tag": "0009_dapper_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785347121120,
+      "tag": "0010_robust_texas_twister",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785390402958,
+      "tag": "0011_nosy_spirit",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785394068929,
+      "tag": "0012_gray_scarlet_witch",
+      "breakpoints": true
     }
   ]
 }

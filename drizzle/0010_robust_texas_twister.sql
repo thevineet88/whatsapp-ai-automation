@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "is_admin_reply" boolean DEFAULT false;
