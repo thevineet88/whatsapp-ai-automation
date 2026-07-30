@@ -1,5 +1,4 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
 
 # Run biome lint:fix on staged source files
 FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|json|md|yml|yaml)$' || true)
