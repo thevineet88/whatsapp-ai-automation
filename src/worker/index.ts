@@ -1,12 +1,12 @@
 import "dotenv/config";
 import { createDb } from "@/lib/db/client";
 import { whatsappAccounts } from "@/lib/db/schema";
+import { flushSentry, initSentry } from "@/lib/observability/sentry";
 import { WHATSAPP_INBOUND_QUEUE, type WhatsAppInboundJob } from "@/lib/queue/whatsappInboundQueue";
 import { createBullMQConnection } from "@/lib/redis/client";
 import { checkWhatsAppCredentials } from "@/lib/whatsapp/client";
 import { Worker } from "bullmq";
 import { handleInboundMessage } from "./handlers/answerMessage";
-import { initSentry, flushSentry } from "@/lib/observability/sentry";
 
 initSentry();
 

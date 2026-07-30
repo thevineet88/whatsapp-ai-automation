@@ -1,9 +1,4 @@
-import {
-  batchPriceVariants,
-  batches,
-  packages,
-  tenants,
-} from "@/lib/db/schema";
+import { batchPriceVariants, batches, packages, tenants } from "@/lib/db/schema";
 import { getServerDb } from "@/lib/db/serverDb";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
@@ -98,7 +93,7 @@ export default async function BatchesPage({
               <th>Starting price</th>
               <th>Last booking</th>
               <th>Status</th>
-              <th style={{ width: 80 }}></th>
+              <th style={{ width: 80 }} />
             </tr>
           </thead>
           <tbody>
@@ -111,9 +106,15 @@ export default async function BatchesPage({
                   {batch.seatsAvailable} / {batch.seatsTotal}
                 </td>
                 <td>{pricePaise(batch.startingPricePaise)}</td>
-                <td>{batch.lastBookingDate ?? <span style={{ color: "var(--muted-foreground)" }}>—</span>}</td>
                 <td>
-                  <span className={`badge ${batch.seatsAvailable <= 0 ? "badge-full" : "badge-available"}`}>
+                  {batch.lastBookingDate ?? (
+                    <span style={{ color: "var(--muted-foreground)" }}>—</span>
+                  )}
+                </td>
+                <td>
+                  <span
+                    className={`badge ${batch.seatsAvailable <= 0 ? "badge-full" : "badge-available"}`}
+                  >
                     {batch.seatsAvailable <= 0 ? "Full" : "Open"}
                   </span>
                 </td>
@@ -180,7 +181,9 @@ export default async function BatchesPage({
               rows={3}
               placeholder="One per line: occupancy:pricePaise (e.g. double:1800000)"
             />
-            <p className="field-hint">Format: occupancy:pricePaise, one per line. Leave blank if not needed.</p>
+            <p className="field-hint">
+              Format: occupancy:pricePaise, one per line. Leave blank if not needed.
+            </p>
           </div>
           <div className="field" style={{ gridColumn: "1 / -1" }}>
             <button type="submit" className="btn btn-primary">

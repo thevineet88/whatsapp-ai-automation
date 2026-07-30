@@ -24,17 +24,15 @@ export default async function ConfigPage({
   const holdingReplyMessage = getHoldingReplyMessage(config);
   const existingAdminPassword =
     (config?.config as { adminPassword?: string } | undefined)?.adminPassword ?? "";
-  const passwordHint = existingAdminPassword
-    ? "(set — leave blank to keep current)"
-    : "(not set)";
+  const passwordHint = existingAdminPassword ? "(set — leave blank to keep current)" : "(not set)";
 
   return (
     <>
       <div className="page-header">
         <h1 className="page-title">Configuration</h1>
         <p className="page-subtitle">
-          Active config version: <strong>{config?.version ?? "none"}</strong>. Saving writes a
-          new version; the previous one is kept, not overwritten.
+          Active config version: <strong>{config?.version ?? "none"}</strong>. Saving writes a new
+          version; the previous one is kept, not overwritten.
         </p>
       </div>
 
@@ -61,9 +59,7 @@ export default async function ConfigPage({
             <label className="field-label" htmlFor="holdingReplyMessage">
               Holding reply
             </label>
-            <p className="field-hint">
-              Sent to a traveller whenever the bot hands off to a human
-            </p>
+            <p className="field-hint">Sent to a traveller whenever the bot hands off to a human</p>
             <textarea
               id="holdingReplyMessage"
               name="holdingReplyMessage"
@@ -77,14 +73,16 @@ export default async function ConfigPage({
             <label className="field-label" htmlFor="adminPassword">
               Admin panel password {passwordHint}
             </label>
-            <p className="field-hint">
-              Shared password for /admin access. At least 6 characters.
-            </p>
+            <p className="field-hint">Shared password for /admin access. At least 6 characters.</p>
             <input
               id="adminPassword"
               name="adminPassword"
               type="password"
-              placeholder={existingAdminPassword ? "Leave blank to keep current password" : "At least 6 characters"}
+              placeholder={
+                existingAdminPassword
+                  ? "Leave blank to keep current password"
+                  : "At least 6 characters"
+              }
               style={{ marginTop: "0.5rem" }}
             />
           </div>

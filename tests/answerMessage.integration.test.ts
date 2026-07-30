@@ -214,7 +214,9 @@ describe("handleInboundMessage (intent router)", () => {
         entry.name
           .toLowerCase()
           .split(/[\s-]+/)
-          .some((word) => word.length >= 4 && !STUB_NAME_STOPWORDS.has(word) && text.includes(word)),
+          .some(
+            (word) => word.length >= 4 && !STUB_NAME_STOPWORDS.has(word) && text.includes(word),
+          ),
       );
       const intent: MessageUnderstanding["intent"] =
         text.includes("train name") || text.includes("which train")
@@ -252,7 +254,9 @@ describe("handleInboundMessage (intent router)", () => {
         entry.name
           .toLowerCase()
           .split(/[\s-]+/)
-          .some((word) => word.length >= 4 && !STUB_NAME_STOPWORDS.has(word) && text.includes(word)),
+          .some(
+            (word) => word.length >= 4 && !STUB_NAME_STOPWORDS.has(word) && text.includes(word),
+          ),
       );
       return { intent: "other", packageId: hit?.id ?? input.anchoredPackageId ?? null };
     });
@@ -316,7 +320,9 @@ describe("handleInboundMessage (intent router)", () => {
         entry.name
           .toLowerCase()
           .split(/[\s-]+/)
-          .some((word) => word.length >= 4 && !STUB_NAME_STOPWORDS.has(word) && text.includes(word)),
+          .some(
+            (word) => word.length >= 4 && !STUB_NAME_STOPWORDS.has(word) && text.includes(word),
+          ),
       );
       // Force browse_packages to mimic the model's misclassification.
       return { intent: "browse_packages", packageId: hit?.id ?? input.anchoredPackageId ?? null };

@@ -1,19 +1,17 @@
 "use server";
 
-import { setAdminSession, deleteAdminSession } from "@/lib/admin/cookies";
 import { checkAdminPassword } from "@/lib/admin/auth";
+import { deleteAdminSession, setAdminSession } from "@/lib/admin/cookies";
+import { conversations, escalations, messages, tenants, whatsappAccounts } from "@/lib/db/schema";
 import { getServerDb } from "@/lib/db/serverDb";
 import { getActiveTenantConfig } from "@/lib/db/tenantConfig";
-import { tenants, conversations, messages, escalations, whatsappAccounts } from "@/lib/db/schema";
-import { eq, and, desc, asc } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { createWhatsAppClient } from "@/lib/whatsapp/client";
+import { and, asc, desc, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
-export type AdminActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type AdminActionResult = { ok: true } | { ok: false; error: string };
 
 async function getTenantContext() {
   const db = getServerDb();
@@ -49,7 +47,7 @@ export async function listConversations(status?: string) {
 
   const validStatuses = ["open", "escalated", "awaiting_human", "human_active"] as const;
   const statusFilter = (validStatuses as readonly string[]).includes(status ?? "")
-    ? (status as typeof validStatuses[number])
+    ? (status as (typeof validStatuses)[number])
     : undefined;
 
   const rows = await db
@@ -110,12 +108,7 @@ export async function getConversationThread(conversationId: string) {
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(
-      and(
-        eq(conversations.id, conversationId),
-        eq(conversations.tenantId, tenant.id),
-      ),
-    )
+    .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenant.id)))
     .limit(1);
 
   if (!conversation) return null;
@@ -152,20 +145,13 @@ export async function getConversationThread(conversationId: string) {
 
 // ─── Take over ─────────────────────────────────────────────────────────────
 
-export async function takeOverConversation(
-  conversationId: string,
-): Promise<AdminActionResult> {
+export async function takeOverConversation(conversationId: string): Promise<AdminActionResult> {
   const { db, tenant } = await getTenantContext();
 
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(
-      and(
-        eq(conversations.id, conversationId),
-        eq(conversations.tenantId, tenant.id),
-      ),
-    )
+    .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenant.id)))
     .limit(1);
 
   if (!conversation) return { ok: false, error: "Conversation not found" };
@@ -182,20 +168,13 @@ export async function takeOverConversation(
 
 // ─── Return to bot ───────────────────────────────────────────────────────────
 
-export async function returnToBot(
-  conversationId: string,
-): Promise<AdminActionResult> {
+export async function returnToBot(conversationId: string): Promise<AdminActionResult> {
   const { db, tenant } = await getTenantContext();
 
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(
-      and(
-        eq(conversations.id, conversationId),
-        eq(conversations.tenantId, tenant.id),
-      ),
-    )
+    .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenant.id)))
     .limit(1);
 
   if (!conversation) return { ok: false, error: "Conversation not found" };
@@ -233,12 +212,7 @@ export async function sendAdminReply(
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(
-      and(
-        eq(conversations.id, conversationId),
-        eq(conversations.tenantId, tenant.id),
-      ),
-    )
+    .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenant.id)))
     .limit(1);
 
   if (!conversation) return { ok: false, error: "Conversation not found" };

@@ -16,9 +16,9 @@ import { findInboundMessageId, persistMessageTrace } from "@/lib/observability/p
 import { reportError } from "@/lib/observability/sentry";
 import type { WhatsAppInboundJob } from "@/lib/queue/whatsappInboundQueue";
 import { type Embedder, createJinaEmbedder } from "@/lib/rag/embedder";
+import { createRedis } from "@/lib/redis/client";
 import { type ConversationStatus, routeMessage } from "@/lib/router/route";
 import { type WhatsAppClient, createWhatsAppClient } from "@/lib/whatsapp/client";
-import { createRedis } from "@/lib/redis/client";
 import { and, asc, eq } from "drizzle-orm";
 
 // How many prior turns the understanding pass sees. Enough to resolve a
@@ -104,13 +104,7 @@ export async function handleInboundMessage(
     const LOCK_POLL_INTERVAL_MS = 200;
     const deadline = Date.now() + LOCK_WAIT_MS;
     while (Date.now() < deadline) {
-      const setResult = await redis.set(
-        lockKey,
-        "1",
-        "EX",
-        LOCK_TTL_SECONDS,
-        "NX",
-      );
+      const setResult = await redis.set(lockKey, "1", "EX", LOCK_TTL_SECONDS, "NX");
       if (setResult === "OK") {
         lockAcquired = true;
         break;
@@ -136,7 +130,15 @@ export async function handleInboundMessage(
     // early. Feeding a placeholder like "[unsupported message type: audio]"
     // into the LLM pipeline wastes a model call and returns a generic holding
     // reply to a perfectly reasonable traveller.
-    const UNSUPPORTED_TYPES = new Set(["audio", "image", "video", "document", "sticker", "location", "contacts"]);
+    const UNSUPPORTED_TYPES = new Set([
+      "audio",
+      "image",
+      "video",
+      "document",
+      "sticker",
+      "location",
+      "contacts",
+    ]);
     const inboundContent = message.text?.body ?? `[unsupported message type: ${message.type}]`;
     const isUnsupportedText = !message.text?.body && UNSUPPORTED_TYPES.has(message.type);
 
@@ -182,19 +184,186 @@ export async function handleInboundMessage(
     // reply. The admin's manual reply flow does not need the bot to be
     // involved; this branch ends the job and yields the lock.
     if (conversation.status === "human_active") {
-      console.log("wa handler: skipping reply, human_active", { tenantId, conversationId: conversation.id });
+      console.log("wa handler: skipping reply, human_active", {
+        tenantId,
+        conversationId: conversation.id,
+      });
       return;
     }
 
     if (isUnsupportedText) {
+      const accessToken = requireEnv("WHATSAPP_ACCESS_TOKEN");
+      const client = createClient(accessToken, account.phoneNumberId);
+      const sendResult = await client.sendTextMessage(
+        message.from,
+        "I can read text messages best. Please type your question and I will help you right away!",
+      );
+
+      if (!sendResult.ok) {
+        await recordEscalation({
+          db,
+          tenantId,
+          conversationId: conversation.id,
+          reason: "whatsapp_send_failed",
+          severity: "hard",
+          travellerPhone: message.from,
+          contacts: activeConfig?.escalationContacts.map((c) => c.name) ?? [],
+          detail: sendResult.error,
+        });
+        throw new Error(sendResult.error);
+      }
+
+      await db
+        .insert(messages)
+        .values({
+          tenantId,
+          conversationId: conversation.id,
+          metaMessageId: sendResult.metaMessageId,
+          direction: "outbound",
+          content:
+            "I can read text messages best. Please type your question and I will help you right away!",
+          escalationReason: null,
+        })
+        .onConflictDoNothing();
+
+      await db
+        .update(conversations)
+        .set({ lastMessageAt: new Date() })
+        .where(eq(conversations.id, conversation.id));
+
+      return;
+    }
+
+    const holdingReplyMessage = getHoldingReplyMessage(activeConfig);
+
+    const priorMessages = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversation.id))
+      .orderBy(asc(messages.createdAt));
+
+    // Drop the message just persisted: it is the one being routed, not context.
+    // Also drop the bot's own handoff replies. Showing the model three rounds
+    // of "our team will get back to you shortly" taught it that a human had
+    // taken the thread, so it flagged the next ordinary question as needing a
+    // human too, which produced another handoff reply. The loop fed itself and
+    // the traveller stopped getting answers entirely.
+    const history = priorMessages
+      .slice(0, -1)
+      .filter((row) => !(row.direction === "outbound" && row.escalationReason !== null))
+      .slice(-HISTORY_TURNS)
+      .map((row) => ({
+        role: row.direction === "inbound" ? ("traveller" as const) : ("bot" as const),
+        content: row.content,
+      }));
+
+    const traceStart = new Date();
+    let result: Awaited<ReturnType<typeof routeMessage>>;
+    try {
+      const routeTimer = startStage("routeMessage");
+      result = await routeMessage(
+        db,
+        tenantId,
+        {
+          packageId: conversation.packageId,
+          pendingClarificationCount: conversation.pendingClarificationCount,
+          status: conversation.status,
+          phase: conversation.phase,
+          collectorData: (conversation.collectorData as Record<string, unknown> | null) ?? null,
+          history,
+        },
+        holdingReplyMessage,
+        inboundContent,
+        { embedder, answerGenerator, understandingClassifier, collectorExtractor },
+      );
+      logStage(routeTimer);
+    } catch (error) {
+      // routeMessage should never throw (it catches and turns errors into
+      // escalation replies), but a logged-in trace is the only place we'd
+      // see a programmer error. Report to Sentry and let the outer handler
+      // rethrow to BullMQ for retry.
+      reportError(error, { tenantId, conversationId: conversation.id, phase: "routeMessage" });
+      throw error;
+    }
+
+    // Persist a trace row for every inbound message. Wrapped in its own
+    // try/catch so a write failure can't take down the rest of the handler -
+    // the trace is diagnostic, the reply is the actual product.
+    try {
+      const inboundId = await findInboundMessageId(db, message.id);
+      if (inboundId) {
+        await persistMessageTrace({
+          db,
+          tenantId,
+          conversationId: conversation.id,
+          inboundMessageId: inboundId,
+          routerResult: result,
+          intent: result.trace?.intent ?? "unknown",
+          configVersion: activeConfig?.version ?? 0,
+          llmUsage: result.trace?.llmUsage ?? null,
+          retrievedChunkIds: result.trace?.retrievedChunkIds ?? [],
+          retrievalTopScore: result.trace?.retrievalTopScore ?? null,
+          toolCalls: result.trace?.toolCalls ?? [],
+          startTime: traceStart,
+          result: result.escalateReason ? "escalated" : "answered",
+        });
+      }
+    } catch (traceError) {
+      console.error("wa handler: trace persistence failed", { tenantId, error: traceError });
+    }
+
+    // Durable state is written before the network call, not after. A failed
+    // send used to throw past the escalation insert and the conversation
+    // update, so the team never learned the bot had gone mute and the
+    // traveller was left in permanent silence. Everything below is safe to
+    // re-run: escalations dedupe by reason, and the conversation update sets
+    // absolute values recomputed from the same inputs.
+    if (result.escalateReason) {
+      await recordEscalation({
+        db,
+        tenantId,
+        conversationId: conversation.id,
+        reason: result.escalateReason,
+        severity: result.escalateSeverity ?? "hard",
+        travellerPhone: message.from,
+        contacts: activeConfig?.escalationContacts.map((c) => c.name) ?? [],
+        detail: result.escalateDetail ?? null,
+        // Collector requests (custom package, booking) are per-request:
+        // each ask-all → reply pair is a separate escalation so the admin
+        // view shows them as individual line items rather than collapsing
+        // into one stale row.
+        alwaysCreate:
+          result.escalateReason === "custom_package_request" ||
+          result.escalateReason === "booking_request",
+      });
+    }
+
+    await db
+      .update(conversations)
+      .set({
+        packageId: result.nextPackageId,
+        pendingClarificationCount: result.nextPendingClarificationCount,
+        status: nextStatus(conversation.status, result.escalateSeverity),
+        phase: result.nextPhase as "collecting_custom_package" | "collecting_booking" | null,
+        collectorData: result.nextCollectorData as Record<string, unknown> | null,
+        lastMessageAt: new Date(),
+      })
+      .where(eq(conversations.id, conversation.id));
+
+    if (result.replyText === null) return;
+
     const accessToken = requireEnv("WHATSAPP_ACCESS_TOKEN");
     const client = createClient(accessToken, account.phoneNumberId);
-    const sendResult = await client.sendTextMessage(
-      message.from,
-      "I can read text messages best. Please type your question and I will help you right away!",
-    );
+    const sendTimer = startStage("whatsapp_send");
+    const sendResult = await client.sendTextMessage(message.from, result.replyText);
+    logStage(sendTimer);
 
     if (!sendResult.ok) {
+      // The bot is mute: a bad token, a revoked number, an outage. That is an
+      // operational emergency, not a routing outcome, so it is recorded for
+      // the team before the throw that hands the job back to the queue for
+      // retry. Previously this threw straight past every write and the failure
+      // existed only in a log line nobody was watching.
       await recordEscalation({
         db,
         tenantId,
@@ -208,6 +377,8 @@ export async function handleInboundMessage(
       throw new Error(sendResult.error);
     }
 
+    // Only written once the send actually succeeded, so the transcript never
+    // claims the traveller was told something they never received.
     await db
       .insert(messages)
       .values({
@@ -215,174 +386,11 @@ export async function handleInboundMessage(
         conversationId: conversation.id,
         metaMessageId: sendResult.metaMessageId,
         direction: "outbound",
-        content: "I can read text messages best. Please type your question and I will help you right away!",
-        escalationReason: null,
+        content: result.replyText,
+        sourceChunkIds: result.sourceChunkIds,
+        escalationReason: result.escalateReason,
       })
       .onConflictDoNothing();
-
-    await db
-      .update(conversations)
-      .set({ lastMessageAt: new Date() })
-      .where(eq(conversations.id, conversation.id));
-
-    return;
-  }
-
-  const holdingReplyMessage = getHoldingReplyMessage(activeConfig);
-
-  const priorMessages = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, conversation.id))
-    .orderBy(asc(messages.createdAt));
-
-  // Drop the message just persisted: it is the one being routed, not context.
-  // Also drop the bot's own handoff replies. Showing the model three rounds
-  // of "our team will get back to you shortly" taught it that a human had
-  // taken the thread, so it flagged the next ordinary question as needing a
-  // human too, which produced another handoff reply. The loop fed itself and
-  // the traveller stopped getting answers entirely.
-  const history = priorMessages
-    .slice(0, -1)
-    .filter((row) => !(row.direction === "outbound" && row.escalationReason !== null))
-    .slice(-HISTORY_TURNS)
-    .map((row) => ({
-      role: row.direction === "inbound" ? ("traveller" as const) : ("bot" as const),
-      content: row.content,
-    }));
-
-  const traceStart = new Date();
-  let result;
-  try {
-    const routeTimer = startStage("routeMessage");
-    result = await routeMessage(
-      db,
-      tenantId,
-      {
-        packageId: conversation.packageId,
-        pendingClarificationCount: conversation.pendingClarificationCount,
-        status: conversation.status,
-        phase: conversation.phase,
-        collectorData: (conversation.collectorData as Record<string, unknown> | null) ?? null,
-        history,
-      },
-      holdingReplyMessage,
-      inboundContent,
-      { embedder, answerGenerator, understandingClassifier, collectorExtractor },
-    );
-    logStage(routeTimer);
-  } catch (error) {
-    // routeMessage should never throw (it catches and turns errors into
-    // escalation replies), but a logged-in trace is the only place we'd
-    // see a programmer error. Report to Sentry and let the outer handler
-    // rethrow to BullMQ for retry.
-    reportError(error, { tenantId, conversationId: conversation.id, phase: "routeMessage" });
-    throw error;
-  }
-
-  // Persist a trace row for every inbound message. Wrapped in its own
-  // try/catch so a write failure can't take down the rest of the handler -
-  // the trace is diagnostic, the reply is the actual product.
-  try {
-    const inboundId = await findInboundMessageId(db, message.id);
-    if (inboundId) {
-      await persistMessageTrace({
-        db,
-        tenantId,
-        conversationId: conversation.id,
-        inboundMessageId: inboundId,
-        routerResult: result,
-        intent: result.trace?.intent ?? "unknown",
-        configVersion: activeConfig?.version ?? 0,
-        llmUsage: result.trace?.llmUsage ?? null,
-        retrievedChunkIds: result.trace?.retrievedChunkIds ?? [],
-        retrievalTopScore: result.trace?.retrievalTopScore ?? null,
-        toolCalls: result.trace?.toolCalls ?? [],
-        startTime: traceStart,
-        result: result.escalateReason ? "escalated" : "answered",
-      });
-    }
-  } catch (traceError) {
-    console.error("wa handler: trace persistence failed", { tenantId, error: traceError });
-  }
-
-  // Durable state is written before the network call, not after. A failed
-  // send used to throw past the escalation insert and the conversation
-  // update, so the team never learned the bot had gone mute and the
-  // traveller was left in permanent silence. Everything below is safe to
-  // re-run: escalations dedupe by reason, and the conversation update sets
-  // absolute values recomputed from the same inputs.
-  if (result.escalateReason) {
-    await recordEscalation({
-      db,
-      tenantId,
-      conversationId: conversation.id,
-      reason: result.escalateReason,
-      severity: result.escalateSeverity ?? "hard",
-      travellerPhone: message.from,
-      contacts: activeConfig?.escalationContacts.map((c) => c.name) ?? [],
-      detail: result.escalateDetail ?? null,
-      // Collector requests (custom package, booking) are per-request:
-      // each ask-all → reply pair is a separate escalation so the admin
-      // view shows them as individual line items rather than collapsing
-      // into one stale row.
-      alwaysCreate: result.escalateReason === "custom_package_request" || result.escalateReason === "booking_request",
-    });
-  }
-
-  await db
-    .update(conversations)
-    .set({
-      packageId: result.nextPackageId,
-      pendingClarificationCount: result.nextPendingClarificationCount,
-      status: nextStatus(conversation.status, result.escalateSeverity),
-      phase: result.nextPhase as "collecting_custom_package" | "collecting_booking" | null,
-      collectorData: result.nextCollectorData as Record<string, unknown> | null,
-      lastMessageAt: new Date(),
-    })
-    .where(eq(conversations.id, conversation.id));
-
-  if (result.replyText === null) return;
-
-  const accessToken = requireEnv("WHATSAPP_ACCESS_TOKEN");
-  const client = createClient(accessToken, account.phoneNumberId);
-  const sendTimer = startStage("whatsapp_send");
-  const sendResult = await client.sendTextMessage(message.from, result.replyText);
-  logStage(sendTimer);
-
-  if (!sendResult.ok) {
-    // The bot is mute: a bad token, a revoked number, an outage. That is an
-    // operational emergency, not a routing outcome, so it is recorded for
-    // the team before the throw that hands the job back to the queue for
-    // retry. Previously this threw straight past every write and the failure
-    // existed only in a log line nobody was watching.
-    await recordEscalation({
-      db,
-      tenantId,
-      conversationId: conversation.id,
-      reason: "whatsapp_send_failed",
-      severity: "hard",
-      travellerPhone: message.from,
-      contacts: activeConfig?.escalationContacts.map((c) => c.name) ?? [],
-      detail: sendResult.error,
-    });
-    throw new Error(sendResult.error);
-  }
-
-  // Only written once the send actually succeeded, so the transcript never
-  // claims the traveller was told something they never received.
-  await db
-    .insert(messages)
-    .values({
-      tenantId,
-      conversationId: conversation.id,
-      metaMessageId: sendResult.metaMessageId,
-      direction: "outbound",
-      content: result.replyText,
-      sourceChunkIds: result.sourceChunkIds,
-      escalationReason: result.escalateReason,
-    })
-    .onConflictDoNothing();
   } finally {
     if (lockAcquired && redis && lockKey) {
       try {

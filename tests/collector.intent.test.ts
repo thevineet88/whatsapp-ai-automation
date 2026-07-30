@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  classifyEscalationKeywords,
-  classifyKnownIntent,
-} from "../src/lib/router/intent";
+import { classifyEscalationKeywords, classifyKnownIntent } from "../src/lib/router/intent";
 
 describe("classifyEscalationKeywords — what blocks the LLM understanding pass", () => {
   it("returns null for a message with no escalation keyword", () => {

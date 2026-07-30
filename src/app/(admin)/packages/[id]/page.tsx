@@ -40,12 +40,19 @@ export default async function EditPackagePage({
         &larr; All packages
       </Link>
 
-      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "0.75rem" }}>
+      <div
+        className="page-header"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          flexWrap: "wrap",
+          gap: "0.75rem",
+        }}
+      >
         <div>
           <h1 className="page-title">{pkg.name}</h1>
-          <p className="page-subtitle">
-            Edit package details, manage batches and payment schedule
-          </p>
+          <p className="page-subtitle">Edit package details, manage batches and payment schedule</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <Link href={`/packages/${pkg.id}/batches`} className="btn btn-secondary">
@@ -64,7 +71,9 @@ export default async function EditPackagePage({
         <PackageForm action={updatePackageWithId} defaults={pkg} submitLabel="Save changes" />
       </div>
 
-      <div style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}>
+      <div
+        style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}
+      >
         <form action={deletePackageWithId}>
           <button type="submit" className="btn btn-danger">
             Delete package

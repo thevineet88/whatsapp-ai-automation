@@ -1,7 +1,7 @@
 "use client";
 
-import { loginAdmin } from "./conversations/actions";
 import { useState } from "react";
+import { loginAdmin } from "./conversations/actions";
 
 export default function LoginForm() {
   const [error, setError] = useState<string | null>(null);
@@ -26,13 +26,7 @@ export default function LoginForm() {
         <p className="login-subtitle">Samyati Holidays</p>
         <form action={handleSubmit} className="login-form">
           <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoFocus
-            required
-          />
+          <input id="password" name="password" type="password" required />
           {error && <p className="text-error">{error}</p>}
           <button type="submit" disabled={pending} className="btn-primary">
             {pending ? "Signing in..." : "Sign in"}

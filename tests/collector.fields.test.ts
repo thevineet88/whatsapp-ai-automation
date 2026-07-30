@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { CollectorExtractor, CollectorExtractorInput } from "../src/lib/llm/collectorExtractor";
+import type {
+  CollectorExtractor,
+  CollectorExtractorInput,
+} from "../src/lib/llm/collectorExtractor";
 import {
   BOOKING_FIELDS,
   CUSTOM_PACKAGE_FIELDS,
@@ -92,9 +95,7 @@ describe("fillRatio", () => {
   });
 
   it("returns 1 when every canonical field has a non-empty value", () => {
-    const allFilled = Object.fromEntries(
-      BOOKING_FIELDS.map((f) => [f.key, "x"]),
-    );
+    const allFilled = Object.fromEntries(BOOKING_FIELDS.map((f) => [f.key, "x"]));
     expect(fillRatio("collecting_booking", data(allFilled))).toBe(1);
   });
 
@@ -149,10 +150,7 @@ describe("missingFields", () => {
   });
 
   it("drops fields that have a value", () => {
-    const lines = missingFields(
-      "collecting_booking",
-      data({ passengerCount: "3" }),
-    );
+    const lines = missingFields("collecting_booking", data({ passengerCount: "3" }));
     expect(lines).not.toContain("How many passengers will be travelling?");
     expect(lines).toContain("Names and ages of each passenger");
   });
@@ -260,9 +258,7 @@ describe("buildFollowUp", () => {
   });
 
   it("has a completion branch when nothing is missing", () => {
-    const allFilled = Object.fromEntries(
-      BOOKING_FIELDS.map((f) => [f.key, "x"]),
-    );
+    const allFilled = Object.fromEntries(BOOKING_FIELDS.map((f) => [f.key, "x"]));
     const text = buildFollowUp("collecting_booking", {
       fields: Object.fromEntries(
         Object.entries(allFilled).map(([k, v]) => [k, { value: v as string, parsed: true }]),
@@ -296,7 +292,10 @@ describe("extractCollectorFields", () => {
   // the function so the second reply sees fields the first reply captured.
   function staticExtractor(fields: Record<string, string | null>): CollectorExtractor {
     return async (_input: CollectorExtractorInput) => ({
-      fields: { ...fields, _gotAskText: null, _gotMessageText: null } as Record<string, string | null>,
+      fields: { ...fields, _gotAskText: null, _gotMessageText: null } as Record<
+        string,
+        string | null
+      >,
     });
   }
 

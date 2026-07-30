@@ -112,12 +112,9 @@ export function createDeepSeekUnderstandingClassifier(apiKey: string): Understan
       messages: [
         {
           role: "system",
-          content:
-            UNDERSTANDING_SYSTEM_PROMPT +
-            renderCatalogueForPrompt(input.catalogue) +
-            "\n\nRespond with a single JSON object matching this schema: " +
-            JSON.stringify(z.toJSONSchema(messageUnderstandingSchema)) +
-            "\nDo not include any prose, explanation, or markdown fences around the JSON.",
+          content: `${
+            UNDERSTANDING_SYSTEM_PROMPT + renderCatalogueForPrompt(input.catalogue)
+          }\n\nRespond with a single JSON object matching this schema: ${JSON.stringify(z.toJSONSchema(messageUnderstandingSchema))}\nDo not include any prose, explanation, or markdown fences around the JSON.`,
         },
         { role: "user", content: buildUnderstandingPrompt(input) },
       ],
@@ -126,7 +123,7 @@ export function createDeepSeekUnderstandingClassifier(apiKey: string): Understan
     if (!content) throw new Error("DeepSeek returned no understanding content");
     const parsed = messageUnderstandingSchema.safeParse(JSON.parse(content));
     if (!parsed.success) {
-      throw new Error("DeepSeek understanding failed schema validation: " + parsed.error.message);
+      throw new Error(`DeepSeek understanding failed schema validation: ${parsed.error.message}`);
     }
     const usage = completion.usage;
     return {

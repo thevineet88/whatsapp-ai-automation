@@ -1,6 +1,6 @@
 import type { Db } from "@/lib/db/client";
+import { messageTraces, messages } from "@/lib/db/schema";
 import type { RouteResult } from "@/lib/router/route";
-import { messages, messageTraces } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 // The prompt version is currently inline. Hardcoded here so the trace row
@@ -40,36 +40,31 @@ export async function persistMessageTrace(input: {
   result: "answered" | "escalated" | "error";
 }): Promise<void> {
   const llm = input.llmUsage;
-  await input.db
-    .insert(messageTraces)
-    .values({
-      tenantId: input.tenantId,
-      conversationId: input.conversationId,
-      messageId: input.inboundMessageId,
-      intent: input.intent,
-      toolCalls: input.toolCalls,
-      retrievedChunkIds: input.retrievedChunkIds,
-      promptVersion: PROMPT_VERSION,
-      configVersion: input.configVersion,
-      llmModel: llm?.model ?? null,
-      llmInputTokens: llm?.inputTokens ?? null,
-      llmOutputTokens: llm?.outputTokens ?? null,
-      retrievalTopScore: input.retrievalTopScore
-        ? Math.round(input.retrievalTopScore * 1_000_000)
-        : null,
-      latencyMs: Date.now() - input.startTime.getTime(),
-      result: input.result,
-      escalationReason: input.routerResult.escalateReason,
-      sourceChunkIds: input.routerResult.sourceChunkIds ?? null,
-    });
+  await input.db.insert(messageTraces).values({
+    tenantId: input.tenantId,
+    conversationId: input.conversationId,
+    messageId: input.inboundMessageId,
+    intent: input.intent,
+    toolCalls: input.toolCalls,
+    retrievedChunkIds: input.retrievedChunkIds,
+    promptVersion: PROMPT_VERSION,
+    configVersion: input.configVersion,
+    llmModel: llm?.model ?? null,
+    llmInputTokens: llm?.inputTokens ?? null,
+    llmOutputTokens: llm?.outputTokens ?? null,
+    retrievalTopScore: input.retrievalTopScore
+      ? Math.round(input.retrievalTopScore * 1_000_000)
+      : null,
+    latencyMs: Date.now() - input.startTime.getTime(),
+    result: input.result,
+    escalationReason: input.routerResult.escalateReason,
+    sourceChunkIds: input.routerResult.sourceChunkIds ?? null,
+  });
 }
 
 // Looks up the inbound message row for a conversation by meta_message_id and
 // returns its DB id. Used to wire message_traces back to messages.
-export async function findInboundMessageId(
-  db: Db,
-  metaMessageId: string,
-): Promise<string | null> {
+export async function findInboundMessageId(db: Db, metaMessageId: string): Promise<string | null> {
   const [row] = await db
     .select({ id: messages.id })
     .from(messages)

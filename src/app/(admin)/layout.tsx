@@ -1,7 +1,7 @@
-import { getServerDb } from "@/lib/db/serverDb";
-import { tenants } from "@/lib/db/schema";
-import { getActiveTenantConfig } from "@/lib/db/tenantConfig";
 import { isAdminAuthenticated } from "@/lib/admin/auth";
+import { tenants } from "@/lib/db/schema";
+import { getServerDb } from "@/lib/db/serverDb";
+import { getActiveTenantConfig } from "@/lib/db/tenantConfig";
 import LoginForm from "./login-form";
 
 async function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -17,8 +17,8 @@ async function AdminGuard({ children }: { children: React.ReactNode }) {
       <>
         {children}
         <p className="warning-banner">
-          No admin password set. Set one in <a href="/config">Config</a> before using
-          the admin panel.
+          No admin password set. Set one in <a href="/config">Config</a> before using the admin
+          panel.
         </p>
       </>
     );

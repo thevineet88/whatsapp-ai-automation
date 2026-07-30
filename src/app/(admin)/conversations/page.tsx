@@ -1,7 +1,7 @@
-import { listConversations } from "./actions";
-import { getServerDb } from "@/lib/db/serverDb";
 import { tenants } from "@/lib/db/schema";
+import { getServerDb } from "@/lib/db/serverDb";
 import Link from "next/link";
+import { listConversations } from "./actions";
 
 const STATUSES = [
   { value: "", label: "All" },
@@ -55,7 +55,7 @@ export default async function ConversationsPage({
               <th>Status</th>
               <th>Last message</th>
               <th>Escalation</th>
-              <th style={{ width: 80 }}></th>
+              <th style={{ width: 80 }} />
             </tr>
           </thead>
           <tbody>
@@ -69,10 +69,21 @@ export default async function ConversationsPage({
                 <td>
                   <span className={`badge badge-${conv.status}`}>{labelFor(conv.status)}</span>
                 </td>
-                <td style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <td
+                  style={{
+                    maxWidth: 280,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {conv.lastMessagePreview}
                 </td>
-                <td style={{ color: conv.escalationReason ? "var(--foreground)" : "var(--muted-foreground)" }}>
+                <td
+                  style={{
+                    color: conv.escalationReason ? "var(--foreground)" : "var(--muted-foreground)",
+                  }}
+                >
                   {conv.escalationReason ?? "—"}
                 </td>
                 <td>
@@ -84,7 +95,9 @@ export default async function ConversationsPage({
             ))}
           </tbody>
         </table>
-        {conversations.length === 0 ? <div className="empty-state">No conversations found.</div> : null}
+        {conversations.length === 0 ? (
+          <div className="empty-state">No conversations found.</div>
+        ) : null}
       </div>
     </>
   );

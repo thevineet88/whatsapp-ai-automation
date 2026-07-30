@@ -30,7 +30,8 @@ export async function updateTenantConfig(formData: FormData): Promise<void> {
 
   const adminPassword = String(formData.get("adminPassword") ?? "").trim();
   const existingConfig = await getActiveTenantConfig(db, tenant.id);
-  const existingPassword = (existingConfig?.config as { adminPassword?: string } | undefined)?.adminPassword;
+  const existingPassword = (existingConfig?.config as { adminPassword?: string } | undefined)
+    ?.adminPassword;
 
   const parsed = tenantConfigInputSchema.safeParse({
     escalationContacts: parseContactsField(raw),

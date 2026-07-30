@@ -40,7 +40,11 @@ export async function generateKnowledgeAnswer(
   const chunkIds = chunks.map((c) => c.id);
 
   if (!passesRetrievalGate(chunks)) {
-    return { result: { kind: "escalate", reason: "retrieval_low_confidence" }, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
+    return {
+      result: { kind: "escalate", reason: "retrieval_low_confidence" },
+      retrievedChunkIds: chunkIds,
+      retrievalTopScore: topScore,
+    };
   }
 
   let output: AnswerGeneratorOutput;
@@ -51,16 +55,39 @@ export async function generateKnowledgeAnswer(
       chunks,
     });
   } catch {
-    return { result: { kind: "escalate", reason: "llm_error" }, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
+    return {
+      result: { kind: "escalate", reason: "llm_error" },
+      retrievedChunkIds: chunkIds,
+      retrievalTopScore: topScore,
+    };
   }
 
   if (output.answer.needsHuman || !output.answer.answerText) {
-    return { result: { kind: "escalate", reason: "llm_needs_human" }, llmUsage: output.usage, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
+    return {
+      result: { kind: "escalate", reason: "llm_needs_human" },
+      llmUsage: output.usage,
+      retrievedChunkIds: chunkIds,
+      retrievalTopScore: topScore,
+    };
   }
 
   if (!validateCitations(output.answer, chunks)) {
-    return { result: { kind: "escalate", reason: "citation_invalid" }, llmUsage: output.usage, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
+    return {
+      result: { kind: "escalate", reason: "citation_invalid" },
+      llmUsage: output.usage,
+      retrievedChunkIds: chunkIds,
+      retrievalTopScore: topScore,
+    };
   }
 
-  return { result: { kind: "answered", text: output.answer.answerText, sourceIds: output.answer.sourceIds }, llmUsage: output.usage, retrievedChunkIds: chunkIds, retrievalTopScore: topScore };
+  return {
+    result: {
+      kind: "answered",
+      text: output.answer.answerText,
+      sourceIds: output.answer.sourceIds,
+    },
+    llmUsage: output.usage,
+    retrievedChunkIds: chunkIds,
+    retrievalTopScore: topScore,
+  };
 }

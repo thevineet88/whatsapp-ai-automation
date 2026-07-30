@@ -1,9 +1,4 @@
-import {
-  cancellationRules,
-  packages,
-  paymentInstallments,
-  tenants,
-} from "@/lib/db/schema";
+import { cancellationRules, packages, paymentInstallments, tenants } from "@/lib/db/schema";
 import { getServerDb } from "@/lib/db/serverDb";
 import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
@@ -63,8 +58,7 @@ export default async function PaymentSchedulePage({
   const addCancellationRuleForPackage = addCancellationRule.bind(null, packageId);
   const nextInstallmentSequence =
     installments.length > 0 ? Math.max(...installments.map((i) => i.sequence)) + 1 : 1;
-  const nextRuleSequence =
-    rules.length > 0 ? Math.max(...rules.map((r) => r.sequence)) + 1 : 1;
+  const nextRuleSequence = rules.length > 0 ? Math.max(...rules.map((r) => r.sequence)) + 1 : 1;
 
   return (
     <>
@@ -74,17 +68,19 @@ export default async function PaymentSchedulePage({
 
       <div className="page-header">
         <h1 className="page-title">Payment schedule</h1>
-        <p className="page-subtitle">
-          {pkg.name} &middot; Installments and cancellation policy
-        </p>
+        <p className="page-subtitle">{pkg.name} &middot; Installments and cancellation policy</p>
       </div>
 
       {error ? <p className="text-error">{error}</p> : null}
 
       <div className="card" style={{ marginBottom: "1.5rem" }}>
-        <h2 className="section-title" style={{ marginTop: 0 }}>Installments</h2>
+        <h2 className="section-title" style={{ marginTop: 0 }}>
+          Installments
+        </h2>
         {installments.length === 0 ? (
-          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>No installments yet.</p>
+          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>
+            No installments yet.
+          </p>
         ) : (
           <div className="table-wrapper" style={{ border: "none", borderRadius: 0 }}>
             <table className="data-table">
@@ -94,7 +90,7 @@ export default async function PaymentSchedulePage({
                   <th>Label</th>
                   <th>Amount</th>
                   <th>Due by</th>
-                  <th style={{ width: 80 }}></th>
+                  <th style={{ width: 80 }} />
                 </tr>
               </thead>
               <tbody>
@@ -119,12 +115,11 @@ export default async function PaymentSchedulePage({
         )}
 
         <div style={{ marginTop: "1rem" }}>
-          <form
-            action={addInstallmentForPackage}
-            className="form-grid"
-          >
+          <form action={addInstallmentForPackage} className="form-grid">
             <div className="field">
-              <label className="field-label" htmlFor="sequence">#</label>
+              <label className="field-label" htmlFor="sequence">
+                #
+              </label>
               <input
                 type="number"
                 id="sequence"
@@ -135,17 +130,15 @@ export default async function PaymentSchedulePage({
               />
             </div>
             <div className="field">
-              <label className="field-label" htmlFor="label">Label</label>
-              <input
-                type="text"
-                id="label"
-                name="label"
-                placeholder="1st Installment"
-                required
-              />
+              <label className="field-label" htmlFor="label">
+                Label
+              </label>
+              <input type="text" id="label" name="label" placeholder="1st Installment" required />
             </div>
             <div className="field">
-              <label className="field-label" htmlFor="amountPaise">Amount (paise)</label>
+              <label className="field-label" htmlFor="amountPaise">
+                Amount (paise)
+              </label>
               <input
                 type="number"
                 id="amountPaise"
@@ -155,7 +148,9 @@ export default async function PaymentSchedulePage({
               />
             </div>
             <div className="field" style={{ gridColumn: "1 / -1" }}>
-              <label className="field-label" htmlFor="dueBy">Due by</label>
+              <label className="field-label" htmlFor="dueBy">
+                Due by
+              </label>
               <input
                 type="text"
                 id="dueBy"
@@ -174,7 +169,9 @@ export default async function PaymentSchedulePage({
       </div>
 
       <div className="card">
-        <h2 className="section-title" style={{ marginTop: 0 }}>Refund &amp; cancellation policy</h2>
+        <h2 className="section-title" style={{ marginTop: 0 }}>
+          Refund &amp; cancellation policy
+        </h2>
         <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem", margin: "0 0 1rem 0" }}>
           Note: The first installment is non-refundable in all cases.
         </p>
@@ -191,7 +188,7 @@ export default async function PaymentSchedulePage({
                   <th style={{ width: 50 }}>#</th>
                   <th>Cutoff</th>
                   <th>Deduction</th>
-                  <th style={{ width: 80 }}></th>
+                  <th style={{ width: 80 }} />
                 </tr>
               </thead>
               <tbody>
@@ -220,7 +217,9 @@ export default async function PaymentSchedulePage({
           style={{ marginTop: "1rem" }}
         >
           <div className="field">
-            <label className="field-label" htmlFor="sequence">#</label>
+            <label className="field-label" htmlFor="sequence">
+              #
+            </label>
             <input
               type="number"
               id="sequence"
@@ -231,7 +230,9 @@ export default async function PaymentSchedulePage({
             />
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="cutoff">Cutoff</label>
+            <label className="field-label" htmlFor="cutoff">
+              Cutoff
+            </label>
             <input
               type="text"
               id="cutoff"
@@ -241,7 +242,9 @@ export default async function PaymentSchedulePage({
             />
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="deduction">Deduction</label>
+            <label className="field-label" htmlFor="deduction">
+              Deduction
+            </label>
             <input
               type="text"
               id="deduction"

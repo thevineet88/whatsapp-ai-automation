@@ -44,11 +44,7 @@ export function createDeepSeekAnswerGenerator(apiKey: string): AnswerGenerator {
       messages: [
         {
           role: "system",
-          content:
-            ANSWER_SYSTEM_PROMPT +
-            "\n\nRespond with a single JSON object matching this schema: " +
-            JSON.stringify(z.toJSONSchema(generatedAnswerSchema)) +
-            "\nDo not include any prose, explanation, or markdown fences around the JSON.",
+          content: `${ANSWER_SYSTEM_PROMPT}\n\nRespond with a single JSON object matching this schema: ${JSON.stringify(z.toJSONSchema(generatedAnswerSchema))}\nDo not include any prose, explanation, or markdown fences around the JSON.`,
         },
         { role: "user", content: buildAnswerPrompt(input) },
       ],
@@ -57,7 +53,7 @@ export function createDeepSeekAnswerGenerator(apiKey: string): AnswerGenerator {
     if (!content) throw new Error("DeepSeek returned no answer content");
     const parsed = generatedAnswerSchema.safeParse(JSON.parse(content));
     if (!parsed.success) {
-      throw new Error("DeepSeek answer failed schema validation: " + parsed.error.message);
+      throw new Error(`DeepSeek answer failed schema validation: ${parsed.error.message}`);
     }
     const usage = completion.usage;
     return {

@@ -15,7 +15,10 @@ export default async function PackagesPage() {
 
   return (
     <>
-      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+      <div
+        className="page-header"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}
+      >
         <div>
           <h1 className="page-title">Packages</h1>
           <p className="page-subtitle">
@@ -34,7 +37,7 @@ export default async function PackagesPage() {
               <th>Name</th>
               <th>Category</th>
               <th>Duration</th>
-              <th style={{ width: 200, textAlign: "right" }}></th>
+              <th style={{ width: 200, textAlign: "right" }} />
             </tr>
           </thead>
           <tbody>
@@ -44,7 +47,11 @@ export default async function PackagesPage() {
                 <td>
                   <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
                     {pkg.category.map((c) => (
-                      <span key={c} className="badge badge-open" style={{ textTransform: "capitalize" }}>
+                      <span
+                        key={c}
+                        className="badge badge-open"
+                        style={{ textTransform: "capitalize" }}
+                      >
                         {c}
                       </span>
                     ))}
@@ -54,7 +61,11 @@ export default async function PackagesPage() {
                   {pkg.durationDays}D / {pkg.durationNights}N
                 </td>
                 <td style={{ textAlign: "right" }}>
-                  <Link href={`/packages/${pkg.id}`} className="btn btn-secondary btn-sm" style={{ marginRight: "0.5rem" }}>
+                  <Link
+                    href={`/packages/${pkg.id}`}
+                    className="btn btn-secondary btn-sm"
+                    style={{ marginRight: "0.5rem" }}
+                  >
                     Edit
                   </Link>
                   <Link href={`/packages/${pkg.id}/batches`} className="btn btn-secondary btn-sm">

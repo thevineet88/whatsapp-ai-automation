@@ -9,16 +9,14 @@ import {
   validatePackageId,
 } from "@/lib/guardrails/escalationPolicy";
 import type { AnswerGenerator } from "@/lib/llm/answerModel";
+import type { CollectorExtractor } from "@/lib/llm/collectorExtractor";
 import { generateKnowledgeAnswer } from "@/lib/llm/generateAnswer";
-import { type CollectorExtractor } from "@/lib/llm/collectorExtractor";
-import { type UnderstandingClassifier, type UnderstandingOutput } from "@/lib/llm/understanding";
+import type { UnderstandingClassifier, UnderstandingOutput } from "@/lib/llm/understanding";
 import type { Embedder } from "@/lib/rag/embedder";
 import { listBatches } from "@/lib/tools/packages";
 import { getPaymentSchedule, getPrice } from "@/lib/tools/pricing";
 import { eq } from "drizzle-orm";
 import { type Catalogue, type CatalogueEntry, loadCatalogue } from "./catalogue";
-import { classifyEscalationKeywords, classifyIntent, classifyKnownIntent } from "./intent";
-import { matchPackages } from "./packageMatch";
 import {
   type CollectorData,
   type CollectorPhase,
@@ -27,6 +25,8 @@ import {
   buildHandoffTravelerMessage,
   extractCollectorFields,
 } from "./collector";
+import { classifyEscalationKeywords, classifyIntent, classifyKnownIntent } from "./intent";
+import { matchPackages } from "./packageMatch";
 import {
   GREETING_REPLY,
   HOW_TO_BOOK_REPLY,
@@ -57,11 +57,7 @@ export type RagDeps = {
   collectorExtractor?: CollectorExtractor;
 };
 
-export type ConversationStatus =
-  | "open"
-  | "escalated"
-  | "awaiting_human"
-  | "human_active";
+export type ConversationStatus = "open" | "escalated" | "awaiting_human" | "human_active";
 
 export type ConversationRouteState = {
   packageId: string | null;
@@ -195,7 +191,8 @@ export async function routeMessage(
 
   let collectorIntent: CollectorIntent | null = null;
   if (state.phase) {
-    collectorIntent = state.phase === "collecting_custom_package" ? "custom_package_request" : "booking_request";
+    collectorIntent =
+      state.phase === "collecting_custom_package" ? "custom_package_request" : "booking_request";
   } else {
     // Keyword check first: deterministic and cheap. Falls back to the
     // LLM's intent so phrasings the keyword list misses still reach the
@@ -203,7 +200,11 @@ export async function routeMessage(
     const known = classifyKnownIntent(text);
     if (known && (known.type === "custom_package_request" || known.type === "booking_request")) {
       collectorIntent = known.type;
-    } else if (understanding && (understanding.intent === "custom_package_request" || understanding.intent === "booking_request")) {
+    } else if (
+      understanding &&
+      (understanding.intent === "custom_package_request" ||
+        understanding.intent === "booking_request")
+    ) {
       // Safety net: the LLM can still misclassify a bare trip name
       // ("kedarnath trip") as booking_request. Only trust the LLM's
       // booking_request when the message itself has a clear booking verb
@@ -255,10 +256,22 @@ export async function routeMessage(
   // The classifier is down. Fall back to the deterministic keyword router so
   // the traveller still gets a real answer rather than a holding reply.
   if (!understanding) {
-    return withTrace(await routeWithKeywordFallback(db, tenantId, state, holdingReplyMessage, text, rag, catalogue, trace), {
-      ...trace,
-      intent: keywordReason ? "keyword_escalation" : "keyword_fallback",
-    });
+    return withTrace(
+      await routeWithKeywordFallback(
+        db,
+        tenantId,
+        state,
+        holdingReplyMessage,
+        text,
+        rag,
+        catalogue,
+        trace,
+      ),
+      {
+        ...trace,
+        intent: keywordReason ? "keyword_escalation" : "keyword_fallback",
+      },
+    );
   }
 
   const resolvedPackageId = validatePackageId(understanding.packageId, catalogue);
@@ -298,11 +311,7 @@ export async function routeMessage(
   // the query ("do I need a permit for Nathula?"). And skips tool intents
   // (price, batches, etc.) that already produce the right answer.
   if (anchored && !understanding.namedUnrecognizedPlace) {
-    const OVERRIDEABLE = new Set<UnderstoodIntent>([
-      "general_knowledge",
-      "best_season",
-      "other",
-    ]);
+    const OVERRIDEABLE = new Set<UnderstoodIntent>(["general_knowledge", "best_season", "other"]);
     if (OVERRIDEABLE.has(understanding.intent) && !looksLikeRealQuestion(text)) {
       const itineraryPlaces = extractItineraryPlaces(anchored);
       if (itineraryPlaces.some((place) => text.toLowerCase().includes(place.toLowerCase()))) {
@@ -316,11 +325,7 @@ export async function routeMessage(
   // departure_point so the anchored package's travel detail gets surfaced.
   // Tool intents already answer the question correctly, so only override
   // when the original intent would otherwise fall through.
-  const NON_TOOL_INTENTS = new Set<UnderstoodIntent>([
-    "general_knowledge",
-    "best_season",
-    "other",
-  ]);
+  const NON_TOOL_INTENTS = new Set<UnderstoodIntent>(["general_knowledge", "best_season", "other"]);
   if (
     anchored &&
     NON_TOOL_INTENTS.has(understanding.intent) &&
@@ -418,7 +423,8 @@ function transportKeywordsHit(text: string): boolean {
 // surface the itinerary day; a real question with a place in it ("do I
 // need a permit for Nathula?") should still reach RAG.
 function looksLikeRealQuestion(text: string): boolean {
-  const questionWords = /\b(what|how|why|when|where|which|do|does|did|is|are|can|could|should|will|would)\b/i;
+  const questionWords =
+    /\b(what|how|why|when|where|which|do|does|did|is|are|can|could|should|will|would)\b/i;
   return questionWords.test(text);
 }
 
@@ -433,7 +439,8 @@ function singleDeterministicMatch(text: string, catalogue: Catalogue): Catalogue
 // "kedarnath trip" (package_overview) from "I want to book kedarnath"
 // (booking_request). The keyword pre-gate already covers most booking
 // phrasings; this is a backstop for LLM classifications that over-match.
-const BOOKING_VERBS = /\b(book|reserve|register|sign\s*up|confirm\s+(?:my\s+)?(?:seat|booking)|lock\s+(?:my\s+)?seat|pay\s+(?:the\s+)?(?:first\s+)?(?:installment|advance))\b/i;
+const BOOKING_VERBS =
+  /\b(book|reserve|register|sign\s*up|confirm\s+(?:my\s+)?(?:seat|booking)|lock\s+(?:my\s+)?seat|pay\s+(?:the\s+)?(?:first\s+)?(?:installment|advance))\b/i;
 
 function hasBookingVerb(text: string): boolean {
   return BOOKING_VERBS.test(text);
@@ -478,7 +485,8 @@ type BuildReplyInput = {
 };
 
 async function buildReply(input: BuildReplyInput): Promise<RouteResult> {
-  const { db, tenantId, rag, catalogue, intent, anchored, candidateIds, state, text, trace } = input;
+  const { db, tenantId, rag, catalogue, intent, anchored, candidateIds, state, text, trace } =
+    input;
 
   const keep = (replyText: string | null, extra?: Partial<RouteResult>): RouteResult => {
     const result: RouteResult = {
@@ -572,13 +580,21 @@ async function clarify(input: BuildReplyInput): Promise<RouteResult> {
 }
 
 async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
-  const { db, tenantId, intent, anchored, trace, holdingReplyMessage, anchorFromThisMessage, state } = input;
+  const {
+    db,
+    tenantId,
+    intent,
+    anchored,
+    trace,
+    holdingReplyMessage,
+    anchorFromThisMessage,
+    state,
+  } = input;
   if (!anchored) {
     throw new Error("runAnchoredIntent called without an anchored package");
   }
 
-  const prefixed = (text: string) =>
-    withAnchorContext(text, anchorFromThisMessage, anchored.name);
+  const prefixed = (text: string) => withAnchorContext(text, anchorFromThisMessage, anchored.name);
 
   try {
     const outcome = await runToolIntent(db, tenantId, anchored, asToolIntent(intent));
@@ -594,17 +610,20 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
         const extra = await runToolIntent(db, tenantId, anchored, secondary);
         trace.toolCalls.push({ name: secondary, input: { packageId: anchored.id }, output: extra });
         if (!extra.escalateReason) {
-          return withTrace({
-            replyText: prefixed(`${outcome.text}\n\n${extra.text}`),
-            nextPackageId: anchored.id,
-            nextPendingClarificationCount: 0,
-            nextPhase: state.phase,
-            nextCollectorData: state.collectorData,
-            escalateReason: null,
-            escalateSeverity: null,
-            escalateDetail: null,
-            sourceChunkIds: null,
-          }, trace);
+          return withTrace(
+            {
+              replyText: prefixed(`${outcome.text}\n\n${extra.text}`),
+              nextPackageId: anchored.id,
+              nextPendingClarificationCount: 0,
+              nextPhase: state.phase,
+              nextCollectorData: state.collectorData,
+              escalateReason: null,
+              escalateSeverity: null,
+              escalateDetail: null,
+              sourceChunkIds: null,
+            },
+            trace,
+          );
         }
       } catch {
         // The primary answer already stands; a failing follow-on question is
@@ -612,20 +631,23 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
       }
     }
 
-    return withTrace({
-      // A soft-escalating outcome (e.g. "no upcoming batches") still names
-      // the specific package in its own text, so the prefix still applies;
-      // only the generic tool_error holding message below is exempt.
-      replyText: prefixed(outcome.text),
-      nextPackageId: anchored.id,
-      nextPendingClarificationCount: 0,
-      nextPhase: state.phase,
-      nextCollectorData: state.collectorData,
-      escalateReason: outcome.escalateReason,
-      escalateSeverity: outcome.escalateReason ? severityFor(outcome.escalateReason) : null,
-      escalateDetail: null,
-      sourceChunkIds: null,
-    }, trace);
+    return withTrace(
+      {
+        // A soft-escalating outcome (e.g. "no upcoming batches") still names
+        // the specific package in its own text, so the prefix still applies;
+        // only the generic tool_error holding message below is exempt.
+        replyText: prefixed(outcome.text),
+        nextPackageId: anchored.id,
+        nextPendingClarificationCount: 0,
+        nextPhase: state.phase,
+        nextCollectorData: state.collectorData,
+        escalateReason: outcome.escalateReason,
+        escalateSeverity: outcome.escalateReason ? severityFor(outcome.escalateReason) : null,
+        escalateDetail: null,
+        sourceChunkIds: null,
+      },
+      trace,
+    );
   } catch (error) {
     console.error("routeMessage: tool layer threw", {
       tenantId,
@@ -633,17 +655,20 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
       intent,
       error,
     });
-    return withTrace({
-      replyText: escalationReply("tool_error", input.holdingReplyMessage),
-      nextPackageId: anchored.id,
-      nextPendingClarificationCount: 0,
-      nextPhase: state.phase,
-      nextCollectorData: state.collectorData,
-      escalateReason: "tool_error",
-      escalateSeverity: severityFor("tool_error"),
-      escalateDetail: null,
-      sourceChunkIds: null,
-    }, trace);
+    return withTrace(
+      {
+        replyText: escalationReply("tool_error", input.holdingReplyMessage),
+        nextPackageId: anchored.id,
+        nextPendingClarificationCount: 0,
+        nextPhase: state.phase,
+        nextCollectorData: state.collectorData,
+        escalateReason: "tool_error",
+        escalateSeverity: severityFor("tool_error"),
+        escalateDetail: null,
+        sourceChunkIds: null,
+      },
+      trace,
+    );
   }
 }
 
@@ -651,11 +676,12 @@ async function answerFromKnowledge(input: BuildReplyInput): Promise<RouteResult>
   const { db, tenantId, rag, anchored, state, text, holdingReplyMessage, trace } = input;
 
   try {
-    const { result, llmUsage, retrievedChunkIds, retrievalTopScore } = await generateKnowledgeAnswer(db, tenantId, rag.embedder, rag.answerGenerator, {
-      question: text,
-      packageId: anchored?.id ?? null,
-      packageName: anchored?.name ?? null,
-    });
+    const { result, llmUsage, retrievedChunkIds, retrievalTopScore } =
+      await generateKnowledgeAnswer(db, tenantId, rag.embedder, rag.answerGenerator, {
+        question: text,
+        packageId: anchored?.id ?? null,
+        packageName: anchored?.name ?? null,
+      });
 
     // Populate the trace accumulator so the worker sees what the pipeline
     // actually did. Done here, not in generateKnowledgeAnswer, because the
@@ -665,49 +691,58 @@ async function answerFromKnowledge(input: BuildReplyInput): Promise<RouteResult>
     trace.llmUsage = llmUsage ?? null;
 
     if (result.kind === "answered") {
-      return withTrace({
-        replyText: anchored
-          ? withAnchorContext(result.text, input.anchorFromThisMessage, anchored.name)
-          : result.text,
+      return withTrace(
+        {
+          replyText: anchored
+            ? withAnchorContext(result.text, input.anchorFromThisMessage, anchored.name)
+            : result.text,
+          nextPackageId: anchored?.id ?? state.packageId,
+          nextPendingClarificationCount: 0,
+          nextPhase: state.phase,
+          nextCollectorData: state.collectorData,
+          escalateReason: null,
+          escalateSeverity: null,
+          escalateDetail: null,
+          sourceChunkIds: result.sourceIds,
+        },
+        trace,
+      );
+    }
+
+    return withTrace(
+      {
+        replyText: escalationReply(result.reason, holdingReplyMessage),
         nextPackageId: anchored?.id ?? state.packageId,
         nextPendingClarificationCount: 0,
         nextPhase: state.phase,
         nextCollectorData: state.collectorData,
-        escalateReason: null,
-        escalateSeverity: null,
+        escalateReason: result.reason,
+        escalateSeverity: severityFor(result.reason),
         escalateDetail: null,
-        sourceChunkIds: result.sourceIds,
-      }, trace);
-    }
-
-    return withTrace({
-      replyText: escalationReply(result.reason, holdingReplyMessage),
-      nextPackageId: anchored?.id ?? state.packageId,
-      nextPendingClarificationCount: 0,
-      nextPhase: state.phase,
-      nextCollectorData: state.collectorData,
-      escalateReason: result.reason,
-      escalateSeverity: severityFor(result.reason),
-      escalateDetail: null,
-      sourceChunkIds: null,
-    }, trace);
+        sourceChunkIds: null,
+      },
+      trace,
+    );
   } catch (error) {
     console.error("routeMessage: knowledge answer pipeline threw", {
       tenantId,
       packageId: anchored?.id ?? null,
       error,
     });
-    return withTrace({
-      replyText: escalationReply("tool_error", holdingReplyMessage),
-      nextPackageId: anchored?.id ?? state.packageId,
-      nextPendingClarificationCount: 0,
-      nextPhase: state.phase,
-      nextCollectorData: state.collectorData,
-      escalateReason: "tool_error",
-      escalateSeverity: severityFor("tool_error"),
-      escalateDetail: null,
-      sourceChunkIds: null,
-    }, trace);
+    return withTrace(
+      {
+        replyText: escalationReply("tool_error", holdingReplyMessage),
+        nextPackageId: anchored?.id ?? state.packageId,
+        nextPendingClarificationCount: 0,
+        nextPhase: state.phase,
+        nextCollectorData: state.collectorData,
+        escalateReason: "tool_error",
+        escalateSeverity: severityFor("tool_error"),
+        escalateDetail: null,
+        sourceChunkIds: null,
+      },
+      trace,
+    );
   }
 }
 
@@ -885,7 +920,10 @@ function resolveCollectorIntent(
   // "follow up until 50% filled" design made the bot pester travellers
   // for missing fields, which they hated.
   const classified = classifyIntent(text);
-  if (classified.kind === "known" && (classified.type === "custom_package_request" || classified.type === "booking_request")) {
+  if (
+    classified.kind === "known" &&
+    (classified.type === "custom_package_request" || classified.type === "booking_request")
+  ) {
     return classified.type;
   }
   if (understanding?.intent === "custom_package_request") return "custom_package_request";
@@ -920,9 +958,10 @@ async function runCollector(input: {
   // handoff message (which names both what we have and what's missing),
   // escalate with the summary, and clear the phase.
   if (state.phase === targetPhase && state.collectorData) {
-    const packageContext = intent === "booking_request"
-      ? { name: catalogue.find((c) => c.id === state.packageId)?.name ?? null }
-      : undefined;
+    const packageContext =
+      intent === "booking_request"
+        ? { name: catalogue.find((c) => c.id === state.packageId)?.name ?? null }
+        : undefined;
     const updated = await extractCollectorFields(
       targetPhase,
       state.collectorData as CollectorData,
@@ -938,7 +977,8 @@ async function runCollector(input: {
       nextPendingClarificationCount: 0,
       nextPhase: null,
       nextCollectorData: null,
-      escalateReason: targetPhase === "collecting_custom_package" ? "custom_package_request" : "booking_request",
+      escalateReason:
+        targetPhase === "collecting_custom_package" ? "custom_package_request" : "booking_request",
       escalateSeverity: "hard",
       escalateDetail: summary,
       sourceChunkIds: null,
@@ -948,15 +988,14 @@ async function runCollector(input: {
   // Fresh request (phase null or a different phase). Ask everything.
   const anchored =
     intent === "booking_request"
-      ? catalogue.find((c) => c.id === state.packageId) ??
-        catalogue.find((c) => c.id === validatePackageId(understanding?.packageId ?? null, catalogue)) ??
-        null
+      ? (catalogue.find((c) => c.id === state.packageId) ??
+        catalogue.find(
+          (c) => c.id === validatePackageId(understanding?.packageId ?? null, catalogue),
+        ) ??
+        null)
       : null;
 
-  const askText = buildCollectorAskAll(
-    targetPhase,
-    anchored?.name ?? undefined,
-  );
+  const askText = buildCollectorAskAll(targetPhase, anchored?.name ?? undefined);
 
   return {
     replyText: askText,

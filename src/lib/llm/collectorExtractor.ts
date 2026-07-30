@@ -16,10 +16,19 @@ const bookingFieldsSchema = z.object({
   passengerCount: z.string().nullable().describe("Number of passengers, e.g. '2 travellers'"),
   passengerDetails: z.string().nullable().describe("Names and ages of each passenger, raw text"),
   contactEmail: z.string().nullable().describe("Email address"),
-  roomSharing: z.string().nullable().describe("Room sharing preference: single, twin, triple, family room, etc."),
-  trainVariant: z.string().nullable().describe("Train or flight preference: AC class, sleeper, flight, etc."),
+  roomSharing: z
+    .string()
+    .nullable()
+    .describe("Room sharing preference: single, twin, triple, family room, etc."),
+  trainVariant: z
+    .string()
+    .nullable()
+    .describe("Train or flight preference: AC class, sleeper, flight, etc."),
   pickupCity: z.string().nullable().describe("City they will board from"),
-  specialRequests: z.string().nullable().describe("Any special requests: meals, accessibility, rooming, etc."),
+  specialRequests: z
+    .string()
+    .nullable()
+    .describe("Any special requests: meals, accessibility, rooming, etc."),
 });
 
 // Custom package collector: the human team needs these fields to design a
@@ -30,9 +39,15 @@ const customPackageFieldsSchema = z.object({
   travellers: z.string().nullable().describe("How many travellers and their ages"),
   dates: z.string().nullable().describe("Preferred travel month or specific dates"),
   budget: z.string().nullable().describe("Approximate budget per person"),
-  tripType: z.string().nullable().describe("What kind of trip: honeymoon, family, friends, corporate, solo, other"),
+  tripType: z
+    .string()
+    .nullable()
+    .describe("What kind of trip: honeymoon, family, friends, corporate, solo, other"),
   departureCity: z.string().nullable().describe("Which city they will travel from"),
-  specialRequirements: z.string().nullable().describe("Special requirements: room preferences, dietary, mobility, sights"),
+  specialRequirements: z
+    .string()
+    .nullable()
+    .describe("Special requirements: room preferences, dietary, mobility, sights"),
 });
 
 export type CollectorExtractorInput = {
@@ -46,7 +61,9 @@ export type CollectorExtractorOutput = {
   fields: Record<string, string | null>;
 };
 
-export type CollectorExtractor = (input: CollectorExtractorInput) => Promise<CollectorExtractorOutput>;
+export type CollectorExtractor = (
+  input: CollectorExtractorInput,
+) => Promise<CollectorExtractorOutput>;
 
 const EXTRACTOR_SYSTEM_PROMPT = `You are extracting structured booking and trip-planning fields from a traveller's free-text reply on WhatsApp.
 
@@ -79,20 +96,14 @@ function buildExtractorPrompt(input: CollectorExtractorInput): string {
     input.phase === "collecting_booking" && input.packageName
       ? `\nThis is a booking request for: ${input.packageName}. Do NOT extract the package name from the message; it is already known.\n`
       : "";
-  const prompt = EXTRACTOR_SYSTEM_PROMPT
-    .replace("{askText}", input.askText)
+  const prompt = EXTRACTOR_SYSTEM_PROMPT.replace("{askText}", input.askText)
     .replace("{messageText}", input.messageText)
     .replace("{packageContext}", packageContext);
 
   const schema =
     input.phase === "collecting_booking" ? bookingFieldsSchema : customPackageFieldsSchema;
 
-  return (
-    prompt +
-    "\n\nRespond with a single JSON object matching this schema: " +
-    JSON.stringify(z.toJSONSchema(schema)) +
-    "\nDo not include any prose, explanation, or markdown fences around the JSON."
-  );
+  return `${prompt}\n\nRespond with a single JSON object matching this schema: ${JSON.stringify(z.toJSONSchema(schema))}\nDo not include any prose, explanation, or markdown fences around the JSON.`;
 }
 
 export function createDeepSeekCollectorExtractor(apiKey: string): CollectorExtractor {
@@ -119,7 +130,9 @@ export function createDeepSeekCollectorExtractor(apiKey: string): CollectorExtra
 
     const parsed = schema.safeParse(JSON.parse(content));
     if (!parsed.success) {
-      throw new Error("DeepSeek collector extraction failed schema validation: " + parsed.error.message);
+      throw new Error(
+        `DeepSeek collector extraction failed schema validation: ${parsed.error.message}`,
+      );
     }
 
     return { fields: parsed.data };

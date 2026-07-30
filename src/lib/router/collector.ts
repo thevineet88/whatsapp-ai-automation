@@ -30,27 +30,64 @@ export type CollectorPhase = "collecting_custom_package" | "collecting_booking";
 // ask-order in the first collector message; the traveller can answer in
 // any order, but the order they read first tends to match what they type.
 export const CUSTOM_PACKAGE_FIELDS = [
-  { key: "destination", label: "Destination / region", askLine: "Where would you like to go? (city, region, or country)" },
+  {
+    key: "destination",
+    label: "Destination / region",
+    askLine: "Where would you like to go? (city, region, or country)",
+  },
   { key: "duration", label: "Duration", askLine: "How many days and nights?" },
   { key: "travellers", label: "Travellers", askLine: "How many travellers and their ages?" },
   { key: "dates", label: "Travel dates", askLine: "Preferred travel month or specific dates?" },
   { key: "budget", label: "Budget per person", askLine: "Approximate budget per person?" },
-  { key: "tripType", label: "Trip type", askLine: "What kind of trip? (honeymoon / family / friends / corporate / solo / other)" },
+  {
+    key: "tripType",
+    label: "Trip type",
+    askLine: "What kind of trip? (honeymoon / family / friends / corporate / solo / other)",
+  },
   { key: "departureCity", label: "Departure city", askLine: "Which city will you travel from?" },
-  { key: "specialRequirements", label: "Special requirements", askLine: "Anything else we should know? (room preferences, dietary, mobility, sights)" },
+  {
+    key: "specialRequirements",
+    label: "Special requirements",
+    askLine: "Anything else we should know? (room preferences, dietary, mobility, sights)",
+  },
 ] as const;
 
 export type CustomPackageField = (typeof CUSTOM_PACKAGE_FIELDS)[number]["key"];
 
 // Fields the human team needs to actually book a trip.
 export const BOOKING_FIELDS = [
-  { key: "passengerCount", label: "Number of passengers", askLine: "How many passengers will be travelling?" },
-  { key: "passengerDetails", label: "Passenger names and ages", askLine: "Names and ages of each passenger" },
+  {
+    key: "passengerCount",
+    label: "Number of passengers",
+    askLine: "How many passengers will be travelling?",
+  },
+  {
+    key: "passengerDetails",
+    label: "Passenger names and ages",
+    askLine: "Names and ages of each passenger",
+  },
   { key: "contactEmail", label: "Email", askLine: "Your email address (for booking confirmation)" },
-  { key: "roomSharing", label: "Room sharing", askLine: "Room sharing preference (single / twin / triple / family)?" },
-  { key: "trainVariant", label: "Train / flight variant", askLine: "Train or flight preference? (AC class, sleeper, flight, etc.)" },
-  { key: "pickupCity", label: "Pickup / departure city", askLine: "Which city will you board from?" },
-  { key: "specialRequests", label: "Special requests", askLine: "Any special requests? (veg/jain meals, accessibility, rooming with another traveller)" },
+  {
+    key: "roomSharing",
+    label: "Room sharing",
+    askLine: "Room sharing preference (single / twin / triple / family)?",
+  },
+  {
+    key: "trainVariant",
+    label: "Train / flight variant",
+    askLine: "Train or flight preference? (AC class, sleeper, flight, etc.)",
+  },
+  {
+    key: "pickupCity",
+    label: "Pickup / departure city",
+    askLine: "Which city will you board from?",
+  },
+  {
+    key: "specialRequests",
+    label: "Special requests",
+    askLine:
+      "Any special requests? (veg/jain meals, accessibility, rooming with another traveller)",
+  },
 ] as const;
 
 export type BookingField = (typeof BOOKING_FIELDS)[number]["key"];
@@ -73,7 +110,9 @@ export type CollectorData = {
   notes?: string;
 };
 
-function getFields(phase: CollectorPhase): readonly { key: string; label: string; askLine: string }[] {
+function getFields(
+  phase: CollectorPhase,
+): readonly { key: string; label: string; askLine: string }[] {
   return phase === "collecting_custom_package" ? CUSTOM_PACKAGE_FIELDS : BOOKING_FIELDS;
 }
 
@@ -117,7 +156,11 @@ export function fillRatio(phase: CollectorPhase, data: CollectorData | null | un
 // Lists the ask-lines for fields that are still empty, in canonical order,
 // for the follow-up "we still need" prompt. Capped so we don't dump eight
 // long lines at once.
-export function missingFields(phase: CollectorPhase, data: CollectorData | null | undefined, max = 4): string[] {
+export function missingFields(
+  phase: CollectorPhase,
+  data: CollectorData | null | undefined,
+  max = 4,
+): string[] {
   const fields = getFields(phase);
   const map = data?.fields ?? {};
   return fields
@@ -132,7 +175,10 @@ export function missingFields(phase: CollectorPhase, data: CollectorData | null 
 // Renders the structured summary shown to the human team at handoff and
 // echoed back to the traveller. Unknown / raw fields are included under
 // their label so nothing the traveller said is silently dropped.
-export function buildCollectorSummary(phase: CollectorPhase, data: CollectorData | null | undefined): string {
+export function buildCollectorSummary(
+  phase: CollectorPhase,
+  data: CollectorData | null | undefined,
+): string {
   const fields = getFields(phase);
   const map = data?.fields ?? {};
   const lines: string[] = [];
@@ -164,8 +210,18 @@ export function buildCollectorSummary(phase: CollectorPhase, data: CollectorData
 // matched first.
 
 const NUMBER_WORDS: Record<string, number> = {
-  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-  eleven: 11, twelve: 12,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
 };
 
 function numberFromText(text: string): number | null {
@@ -182,7 +238,8 @@ const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
 
 // Conservative date sniffers — month names and quarter words. Day-of-month
 // alone is too ambiguous (any number could be one), so we don't try.
-const MONTH_RE = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i;
+const MONTH_RE =
+  /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i;
 const QUARTER_RE = /\b(q[1-4]|first quarter|second quarter|third quarter|fourth quarter)\b/i;
 
 // Trip-type hints — used to map a vague "it's our anniversary" message to
@@ -191,23 +248,54 @@ const TRIP_TYPE_HINTS: { pattern: RegExp; label: string }[] = [
   { pattern: /\b(honeymoon|anniversary|just married|romantic)\b/i, label: "honeymoon" },
   { pattern: /\b(family|with kids|with children|kids trip|parents)\b/i, label: "family" },
   { pattern: /\b(corporate|office trip|company trip|team outing)\b/i, label: "corporate" },
-  { pattern: /\b(group of|friends|college|bachelor|girls trip|boys trip)\b/i, label: "friends / group" },
+  {
+    pattern: /\b(group of|friends|college|bachelor|girls trip|boys trip)\b/i,
+    label: "friends / group",
+  },
   { pattern: /\b(solo|alone|by myself|single traveller|just me)\b/i, label: "solo" },
 ];
 
 // Big-city list — a sniffed city that matches one of these is treated as
 // a real departure city rather than a place-name appearing elsewhere.
 const KNOWN_CITIES = new Set([
-  "mumbai", "pune", "delhi", "bangalore", "bengaluru", "chennai", "kolkata",
-  "hyderabad", "ahmedabad", "jaipur", "lucknow", "surat", "nagpur",
-  "indore", "bhopal", "nashik", "goa", "kochi", "coimbatore", "visakhapatnam",
-  "patna", "chandigarh", "gurgaon", "noida", "thane", "navi mumbai",
+  "mumbai",
+  "pune",
+  "delhi",
+  "bangalore",
+  "bengaluru",
+  "chennai",
+  "kolkata",
+  "hyderabad",
+  "ahmedabad",
+  "jaipur",
+  "lucknow",
+  "surat",
+  "nagpur",
+  "indore",
+  "bhopal",
+  "nashik",
+  "goa",
+  "kochi",
+  "coimbatore",
+  "visakhapatnam",
+  "patna",
+  "chandigarh",
+  "gurgaon",
+  "noida",
+  "thane",
+  "navi mumbai",
 ]);
 
 function sniffDestination(text: string): string | null {
   // "want to go to X", "trip to X", "X trip", "X tour"
-  const toMatch = text.match(/(?:go to|trip to|tour of|visit|tour to|visit to)\s+([a-z][a-z\s'-]{2,40})/i);
-  if (toMatch) return toMatch[1].trim().split(/\s+(?:in|on|from|with|for|and)\b/i)[0].trim();
+  const toMatch = text.match(
+    /(?:go to|trip to|tour of|visit|tour to|visit to)\s+([a-z][a-z\s'-]{2,40})/i,
+  );
+  if (toMatch)
+    return toMatch[1]
+      .trim()
+      .split(/\s+(?:in|on|from|with|for|and)\b/i)[0]
+      .trim();
   const named = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:trip|tour|package)\b/);
   if (named) return named[1];
   // "- Kashmir" or "to Kashmir" on its own line after a numbered label.
@@ -215,7 +303,9 @@ function sniffDestination(text: string): string | null {
   if (standalone) return standalone[1];
   // Bare lowercase word on its own line after a numbered label (the
   // traveller answered "Where would you like to go?" with just "megayla").
-  const bareLine = text.match(/^\s*\d+[.)]\s*(?:Where would you like to go\??\s*[-–:]?\s*)?([a-z][a-z'-]{2,30})\s*$/im);
+  const bareLine = text.match(
+    /^\s*\d+[.)]\s*(?:Where would you like to go\??\s*[-–:]?\s*)?([a-z][a-z'-]{2,30})\s*$/im,
+  );
   if (bareLine) return bareLine[1];
   return null;
 }
@@ -235,10 +325,14 @@ function sniffCity(text: string): string | null {
 function sniffBudget(text: string): string | null {
   // The clearest signal: a number preceded by "budget", "under", "around",
   // or just sitting on its own line ("10000") next to a price hint.
-  const m = text.match(/(?:budget|under|around|approx(?:imately)?|~|price|cost|rs\.?|inr|₹)\s*(?:of\s+)?(?:rs\.?|inr|₹)?\s*([\d,]{3,8})/i);
+  const m = text.match(
+    /(?:budget|under|around|approx(?:imately)?|~|price|cost|rs\.?|inr|₹)\s*(?:of\s+)?(?:rs\.?|inr|₹)?\s*([\d,]{3,8})/i,
+  );
   if (m) return `₹${m[1]} per person`;
   // Bare 4–6 digit number with a budget context ("per person 10000").
-  const bare = text.match(/(?:per\s*person|per\s*pax|each|per\s*head|total)\s*(?:rs\.?|inr|₹)?\s*([\d,]{3,8})/i);
+  const bare = text.match(
+    /(?:per\s*person|per\s*pax|each|per\s*head|total)\s*(?:rs\.?|inr|₹)?\s*([\d,]{3,8})/i,
+  );
   if (bare) return `₹${bare[1]} per person`;
   const lakh = text.match(/(\d+(?:\.\d+)?)\s*(?:lakh|lac|l)\b/i);
   if (lakh) return `₹${lakh[1]} lakh per person`;
@@ -272,12 +366,16 @@ function sniffTravellers(text: string): string | null {
   // husband, and our two kids" all return a count, and that's enough for
   // the human team to follow up. Breakdowns (adults / kids) are kept when
   // the traveller provides them.
-  const breakdownMatch = text.match(/(\d+)\s*(\d+\s*adults?\s*\d+\s*kids?|\d+\s*adults?|\d+\s*kids?)/i);
+  const breakdownMatch = text.match(
+    /(\d+)\s*(\d+\s*adults?\s*\d+\s*kids?|\d+\s*adults?|\d+\s*kids?)/i,
+  );
   if (breakdownMatch) return breakdownMatch[0].trim();
   // The traveller-count number must be followed by an actual group word,
   // not by an age. "ages 32 and 30" was being misread as 32 travellers
   // because the regex caught the first number without demanding context.
-  const simple = text.match(/(?:^|\s|passengers?\s*[=:]\s*)(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:of\s+(?:us|them|the group)|adults?|people|persons?|travellers?|pax|kids?|children|members?)/i);
+  const simple = text.match(
+    /(?:^|\s|passengers?\s*[=:]\s*)(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:of\s+(?:us|them|the group)|adults?|people|persons?|travellers?|pax|kids?|children|members?)/i,
+  );
   if (simple) {
     const n = numberFromText(simple[1]);
     if (n) return `${n} travellers`;
@@ -306,12 +404,19 @@ function sniffDates(text: string): string | null {
     if (m) segments.push(m[0]);
   }
   // "22 jan" or "22- jan" - just day + month, no end date.
-  const dayMonth = text.match(/(\d{1,2})\s*[-]?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
+  const dayMonth = text.match(
+    /(\d{1,2})\s*[-]?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i,
+  );
   if (dayMonth && segments.length === 0) segments.push(`${dayMonth[1]} ${dayMonth[2]}`);
-  const dateRange = text.match(/(\d{1,2})\s*(?:st|nd|rd|th)?\s*(?:to|-)\s*(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
+  const dateRange = text.match(
+    /(\d{1,2})\s*(?:st|nd|rd|th)?\s*(?:to|-)\s*(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i,
+  );
   if (dateRange) segments.push(`${dateRange[1]}-${dateRange[2]} ${dateRange[3]}`);
-  const fixedRange = text.match(/(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(?:to|-)\s*(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
-  if (fixedRange) segments.push(`${fixedRange[1]} ${fixedRange[2]} to ${fixedRange[3]} ${fixedRange[4]}`);
+  const fixedRange = text.match(
+    /(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(?:to|-)\s*(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i,
+  );
+  if (fixedRange)
+    segments.push(`${fixedRange[1]} ${fixedRange[2]} to ${fixedRange[3]} ${fixedRange[4]}`);
   if (segments.length === 0) return null;
   return segments.join(", ");
 }
@@ -338,7 +443,8 @@ function sniffTripType(text: string): string | null {
 }
 
 function sniffSpecial(text: string): string | null {
-  const keys = /\b(veg|jain|non-?veg|wheelchair|accessib|kid-?friendly|senior|asthma|knee|allergy|allergies|halal)\b/i;
+  const keys =
+    /\b(veg|jain|non-?veg|wheelchair|accessib|kid-?friendly|senior|asthma|knee|allergy|allergies|halal)\b/i;
   if (keys.test(text)) {
     return text.match(/.{0,80}/)?.[0] ?? null;
   }
@@ -348,7 +454,9 @@ function sniffSpecial(text: string): string | null {
 function sniffRoomSharing(text: string): string | null {
   // Exact match first — covers "single", "twin sharing", "family room",
   // "own room", etc.
-  const exact = text.match(/\b(single|twin|triple|quad|family room|sharing|own room|separate room)\b/i);
+  const exact = text.match(
+    /\b(single|twin|triple|quad|family room|sharing|own room|separate room)\b/i,
+  );
   if (exact) return exact[1].toLowerCase();
   // Fuzzy fallback for common typos ("singel", "twn", "famil room"). Check
   // each word against known terms using a 1-edit distance window — long
@@ -358,7 +466,11 @@ function sniffRoomSharing(text: string): string | null {
   const words = text.toLowerCase().split(/\s+/);
   for (const word of words) {
     for (const candidate of candidates) {
-      if (word.length >= 4 && word.length <= candidate.length + 1 && levenshtein(word, candidate) <= 1) {
+      if (
+        word.length >= 4 &&
+        word.length <= candidate.length + 1 &&
+        levenshtein(word, candidate) <= 1
+      ) {
         return candidate === "family" ? "family room" : candidate;
       }
     }
@@ -395,17 +507,23 @@ function sniffTrainVariant(text: string): string | null {
 
 function sniffPassengerCount(text: string): string | null {
   // "Just me and my wife" / "me and my parents" → explicit number.
-  const duo = text.match(/me\s+and\s+(?:my\s+)?(?:wife|husband|partner|parents?|mom|dad|mother|father|brother|sister|friend)/i);
+  const duo = text.match(
+    /me\s+and\s+(?:my\s+)?(?:wife|husband|partner|parents?|mom|dad|mother|father|brother|sister|friend)/i,
+  );
   if (duo) return "2 travellers";
   // Regex that requires an explicit number followed by a group word. This
   // avoids misreading "ages 32 and 30" as 32 travellers.
-  const m = text.match(/(?:^|\s|passengers?\s*[=:]\s*)(\d+|one|two|three|four|five|six)\s*(?:of\s+(?:us|them|the group)|passengers?|adults?|people|persons?|travellers?|pax|kids?|children|members?)/i);
+  const m = text.match(
+    /(?:^|\s|passengers?\s*[=:]\s*)(\d+|one|two|three|four|five|six)\s*(?:of\s+(?:us|them|the group)|passengers?|adults?|people|persons?|travellers?|pax|kids?|children|members?)/i,
+  );
   if (m) {
     const n = numberFromText(m[1]);
     return n ? `${n} travellers` : null;
   }
   // "with 2 kids" / "plus 3 friends"
-  const withCount = text.match(/(?:with|plus|and)\s+(\d+)\s*(?:kids?|children|adults?|friends|people)/i);
+  const withCount = text.match(
+    /(?:with|plus|and)\s+(\d+)\s*(?:kids?|children|adults?|friends|people)/i,
+  );
   if (withCount) return `${withCount[1]} travellers`;
   return null;
 }
@@ -439,7 +557,12 @@ function sniffEmail(text: string): string | null {
 // Apply a sniff result to the field map. If the field is already filled,
 // the new value is appended (so the human team sees both). If the value
 // could not be parsed, we set parsed=false so it is flagged as raw.
-function setField(map: Record<string, CollectedField<string>>, key: string, value: string | null, parsed: boolean) {
+function setField(
+  map: Record<string, CollectedField<string>>,
+  key: string,
+  value: string | null,
+  parsed: boolean,
+) {
   if (!value) return;
   const existing = map[key];
   if (existing) {
@@ -451,7 +574,11 @@ function setField(map: Record<string, CollectedField<string>>, key: string, valu
   map[key] = { value, parsed };
 }
 
-function rawFallback(map: Record<string, CollectedField<string>>, phase: CollectorPhase, raw: string) {
+function rawFallback(
+  map: Record<string, CollectedField<string>>,
+  phase: CollectorPhase,
+  raw: string,
+) {
   // If we couldn't structure-parse anything but the message clearly is a
   // continuation of the collector (the traveller answered our ask-all
   // with a wall of text), store the raw text in a dedicated notes bucket
@@ -487,7 +614,9 @@ export async function extractCollectorFields(
         packageName: packageContext?.name ?? undefined,
       });
 
-      const hasAnyValue = Object.values(llmResult.fields).some((v) => v !== null && v.trim() !== "");
+      const hasAnyValue = Object.values(llmResult.fields).some(
+        (v) => v !== null && v.trim() !== "",
+      );
       if (hasAnyValue) {
         for (const [key, value] of Object.entries(llmResult.fields)) {
           if (value && value.trim() !== "") {
@@ -512,7 +641,10 @@ export async function extractCollectorFields(
 
 // Builds the "we still need X, Y, Z" follow-up. The 50% gate means most
 // travellers see this once or twice before they qualify for the handoff.
-export function buildFollowUp(phase: CollectorPhase, data: CollectorData | null | undefined): string {
+export function buildFollowUp(
+  phase: CollectorPhase,
+  data: CollectorData | null | undefined,
+): string {
   const missing = missingFields(phase, data);
   const intro =
     phase === "collecting_custom_package"
@@ -527,7 +659,10 @@ export function buildFollowUp(phase: CollectorPhase, data: CollectorData | null 
 // Handoff message shown to the traveller at the moment the bot escalates.
 // Acknowledges what was captured, names what's missing, and explicitly
 // says the team is on it.
-export function buildHandoffTravelerMessage(phase: CollectorPhase, data: CollectorData | null | undefined): string {
+export function buildHandoffTravelerMessage(
+  phase: CollectorPhase,
+  data: CollectorData | null | undefined,
+): string {
   const missing = missingFields(phase, data, 8);
   const filled = buildCollectorSummary(phase, data);
   const header =

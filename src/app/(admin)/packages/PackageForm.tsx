@@ -114,7 +114,13 @@ export function PackageForm({
         <label className="field-label" htmlFor="advisory">
           Advisory
         </label>
-        <textarea id="advisory" name="advisory" rows={3} defaultValue={defaults?.advisory} required />
+        <textarea
+          id="advisory"
+          name="advisory"
+          rows={3}
+          defaultValue={defaults?.advisory}
+          required
+        />
       </div>
 
       <div className="field">
@@ -134,13 +140,7 @@ export function PackageForm({
         <label className="field-label" htmlFor="itinerary">
           Day-by-day itinerary (one per line, format: day|title|description)
         </label>
-        <textarea
-          id="itinerary"
-          name="itinerary"
-          rows={8}
-          defaultValue={itineraryText}
-          required
-        />
+        <textarea id="itinerary" name="itinerary" rows={8} defaultValue={itineraryText} required />
       </div>
 
       <div className="field">

@@ -5,9 +5,9 @@ import type { KnowledgeSourceInput } from "../src/lib/core/knowledge";
 import type { Db } from "../src/lib/db/client";
 import { createDb } from "../src/lib/db/client";
 import { packages, tenants } from "../src/lib/db/schema";
+import { EMBEDDING_DIMENSIONS } from "../src/lib/db/schema";
 import { seedSamyati } from "../src/lib/db/seed";
 import type { Embedder } from "../src/lib/rag/embedder";
-import { EMBEDDING_DIMENSIONS } from "../src/lib/db/schema";
 import { ingestKnowledgeSource, ingestKnowledgeSources } from "../src/lib/rag/ingest";
 import { hybridRetrieve } from "../src/lib/rag/retrieval";
 

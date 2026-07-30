@@ -1,11 +1,19 @@
-import {
-  getConversationThread,
-  takeOverConversation,
-  returnToBot,
-  sendAdminReply,
-} from "../actions";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import {
+  getConversationThread,
+  returnToBot,
+  sendAdminReply,
+  takeOverConversation,
+} from "../actions";
+
+type AdminMessage = {
+  direction: string;
+  content: string;
+  createdAt: Date;
+  escalationReason: string | null;
+  isAdminReply: boolean | null;
+};
 
 export default async function ConversationThreadPage({
   params,
@@ -84,16 +92,35 @@ export default async function ConversationThreadPage({
           <strong>Collector requests ({collectorEscalations.length}):</strong>
           <div style={{ marginTop: 8 }}>
             {collectorEscalations.map((esc, i) => (
-              <div key={esc.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < collectorEscalations.length - 1 ? "1px solid var(--border)" : "none" }}>
-                <div style={{ fontSize: "0.8rem", color: "var(--muted-foreground)", marginBottom: 6 }}>
-                  {labelForEscalation(esc.reason)} · {new Date(esc.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" })}
+              <div
+                key={esc.id}
+                style={{
+                  marginBottom: 12,
+                  paddingBottom: 12,
+                  borderBottom:
+                    i < collectorEscalations.length - 1 ? "1px solid var(--border)" : "none",
+                }}
+              >
+                <div
+                  style={{ fontSize: "0.8rem", color: "var(--muted-foreground)", marginBottom: 6 }}
+                >
+                  {labelForEscalation(esc.reason)} ·{" "}
+                  {new Date(esc.createdAt).toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    day: "2-digit",
+                    month: "short",
+                  })}
                 </div>
                 {esc.detail ? (
                   <pre style={{ whiteSpace: "pre-wrap", fontSize: "0.85rem", margin: 0 }}>
                     {esc.detail}
                   </pre>
                 ) : (
-                  <span style={{ color: "var(--muted-foreground)" }}>No structured data captured.</span>
+                  <span style={{ color: "var(--muted-foreground)" }}>
+                    No structured data captured.
+                  </span>
                 )}
               </div>
             ))}
@@ -198,7 +225,7 @@ function labelForEscalation(reason: string): string {
   }
 }
 
-function MessageBubble({ message }: { message: any }) {
+function MessageBubble({ message }: { message: AdminMessage }) {
   const isInbound = message.direction === "inbound";
   const isAdmin = message.isAdminReply;
   const cls = isInbound ? "bubble-inbound" : isAdmin ? "bubble-admin" : "bubble-bot";
