@@ -15,5 +15,10 @@ export const DEFAULT_HOLDING_REPLY =
 export const tenantConfigInputSchema = z.object({
   escalationContacts: z.array(escalationContactSchema).min(1),
   holdingReplyMessage: z.string().min(1).default(DEFAULT_HOLDING_REPLY),
+  // Shared password for the admin panel. Plaintext-on-disk is acceptable for
+  // this single-tenant, single-admin build; the deploy environment is the
+  // security boundary. Stored in the tenant config row alongside contacts
+  // so the team can rotate it from /admin/config without a deploy.
+  adminPassword: z.string().min(6).optional(),
 });
 export type TenantConfigInput = z.infer<typeof tenantConfigInputSchema>;

@@ -77,6 +77,14 @@ const SELF_SERVICEABLE_INTENTS = new Set<UnderstoodIntent>([
   "greeting",
   "browse_packages",
   "package_overview",
+  // Custom-package and booking requests are not self-serviceable in the
+  // sense of "answerable from the database". They are collector phrases that
+  // kick off their own multi-turn flow before any escalation, so the
+  // router, not the model, decides when to hand off. Listing them here
+  // stops the soft `model_needs_human` escalation from firing on the first
+  // turn before the collection has even started.
+  "custom_package_request",
+  "booking_request",
 ]);
 
 function isSelfServiceable(intent: UnderstoodIntent): boolean {

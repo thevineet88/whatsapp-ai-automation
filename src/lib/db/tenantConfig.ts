@@ -51,7 +51,10 @@ export async function createTenantConfigVersion(
         tenantId,
         version: (previous?.version ?? 0) + 1,
         escalationContacts: input.escalationContacts,
-        config: { holdingReplyMessage: input.holdingReplyMessage },
+        config: {
+          holdingReplyMessage: input.holdingReplyMessage,
+          ...(input.adminPassword ? { adminPassword: input.adminPassword } : {}),
+        },
         isActive: true,
       })
       .returning();
