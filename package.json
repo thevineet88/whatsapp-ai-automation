@@ -18,12 +18,12 @@
     "db:seed:aliases": "tsx src/lib/db/seedAliases.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.22",
+    "@ai-sdk/openai": "^4.0.24",
     "@sentry/node": "^10.69.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@valkey/valkey-glide": "^2.5.0",
-    "ai": "^7.0.40",
-    "bullmq": "^5.81.2",
+    "ai": "^7.0.42",
+    "bullmq": "^5.81.3",
     "drizzle-orm": "^0.44.2",
     "ioredis": "^5.4.2",
     "langfuse": "^3.38.20",
