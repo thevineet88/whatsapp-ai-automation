@@ -20,6 +20,8 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.22",
     "@sentry/node": "^10.69.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@valkey/valkey-glide": "^2.5.0",
     "ai": "^7.0.40",
     "bullmq": "^5.81.2",
     "drizzle-orm": "^0.44.2",
@@ -30,6 +32,7 @@
     "pg": "^8.13.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "tailwindcss": "^4.3.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
