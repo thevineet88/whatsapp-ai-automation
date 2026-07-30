@@ -1,5 +1,9 @@
-import { FIRST_INSTALLMENT_NON_REFUNDABLE_NOTE } from "@/lib/core/pricing";
-import { cancellationRules, packages, paymentInstallments, tenants } from "@/lib/db/schema";
+import {
+  cancellationRules,
+  packages,
+  paymentInstallments,
+  tenants,
+} from "@/lib/db/schema";
 import { getServerDb } from "@/lib/db/serverDb";
 import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
@@ -59,175 +63,209 @@ export default async function PaymentSchedulePage({
   const addCancellationRuleForPackage = addCancellationRule.bind(null, packageId);
   const nextInstallmentSequence =
     installments.length > 0 ? Math.max(...installments.map((i) => i.sequence)) + 1 : 1;
-  const nextRuleSequence = rules.length > 0 ? Math.max(...rules.map((r) => r.sequence)) + 1 : 1;
+  const nextRuleSequence =
+    rules.length > 0 ? Math.max(...rules.map((r) => r.sequence)) + 1 : 1;
 
   return (
-    <main>
-      <p>
-        <Link href={`/packages/${packageId}`}>&larr; {pkg.name}</Link>
-        {" · "}
-        <Link href={`/packages/${packageId}/batches`}>Batches</Link>
-      </p>
-      <h1>Payment schedule &mdash; {pkg.name}</h1>
-      {error ? <p style={{ color: "#b00020" }}>{error}</p> : null}
+    <>
+      <Link href={`/packages/${packageId}`} className="back-link">
+        &larr; {pkg.name}
+      </Link>
 
-      <h2>Installments</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-            <th style={{ padding: "0.4rem 0" }}>#</th>
-            <th>Label</th>
-            <th>Amount (paise)</th>
-            <th>Due by</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {installments.map((installment) => {
-            const deleteInstallmentForRow = deleteInstallment.bind(null, packageId, installment.id);
-            return (
-              <tr key={installment.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td style={{ padding: "0.4rem 0" }}>{installment.sequence}</td>
-                <td>{installment.label}</td>
-                <td>{installment.amountPaise}</td>
-                <td>{installment.dueBy}</td>
-                <td>
-                  <form action={deleteInstallmentForRow}>
-                    <button type="submit">Delete</button>
-                  </form>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {installments.length === 0 ? <p>No installments yet.</p> : null}
+      <div className="page-header">
+        <h1 className="page-title">Payment schedule</h1>
+        <p className="page-subtitle">
+          {pkg.name} &middot; Installments and cancellation policy
+        </p>
+      </div>
 
-      <form
-        action={addInstallmentForPackage}
-        style={{
-          display: "flex",
-          gap: "0.5rem",
-          alignItems: "flex-end",
-          flexWrap: "wrap",
-          marginBottom: "2rem",
-        }}
-      >
-        <label>
-          #<br />
-          <input
-            type="number"
-            name="sequence"
-            defaultValue={nextInstallmentSequence}
-            style={{ width: 60 }}
-            required
-          />
-        </label>
-        <label>
-          Label
-          <br />
-          <input
-            type="text"
-            name="label"
-            placeholder="1st Installment"
-            required
-            style={{ width: 160 }}
-          />
-        </label>
-        <label>
-          Amount (paise)
-          <br />
-          <input
-            type="number"
-            name="amountPaise"
-            placeholder="700000"
-            required
-            style={{ width: 130 }}
-          />
-        </label>
-        <label>
-          Due by
-          <br />
-          <input
-            type="text"
-            name="dueBy"
-            placeholder="At the time of booking"
-            required
-            style={{ width: 220 }}
-          />
-        </label>
-        <button type="submit">Add installment</button>
-      </form>
+      {error ? <p className="text-error">{error}</p> : null}
 
-      <h2>Refund &amp; cancellation policy</h2>
-      <p style={{ color: "#666" }}>{FIRST_INSTALLMENT_NON_REFUNDABLE_NOTE}</p>
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-            <th style={{ padding: "0.4rem 0" }}>#</th>
-            <th>Cutoff</th>
-            <th>Deduction</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rules.map((rule) => {
-            const deleteRuleForRow = deleteCancellationRule.bind(null, packageId, rule.id);
-            return (
-              <tr key={rule.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td style={{ padding: "0.4rem 0" }}>{rule.sequence}</td>
-                <td>{rule.cutoff}</td>
-                <td>{rule.deduction}</td>
-                <td>
-                  <form action={deleteRuleForRow}>
-                    <button type="submit">Delete</button>
-                  </form>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {rules.length === 0 ? <p>No cancellation rules yet.</p> : null}
+      <div className="card" style={{ marginBottom: "1.5rem" }}>
+        <h2 className="section-title" style={{ marginTop: 0 }}>Installments</h2>
+        {installments.length === 0 ? (
+          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>No installments yet.</p>
+        ) : (
+          <div className="table-wrapper" style={{ border: "none", borderRadius: 0 }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 50 }}>#</th>
+                  <th>Label</th>
+                  <th>Amount</th>
+                  <th>Due by</th>
+                  <th style={{ width: 80 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {installments.map((installment) => (
+                  <tr key={installment.id}>
+                    <td style={{ fontWeight: 500 }}>{installment.sequence}</td>
+                    <td>{installment.label}</td>
+                    <td>{pricePaise(installment.amountPaise)}</td>
+                    <td>{installment.dueBy}</td>
+                    <td>
+                      <form action={deleteInstallment.bind(null, packageId, installment.id)}>
+                        <button type="submit" className="btn btn-danger btn-sm">
+                          Delete
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      <form
-        action={addCancellationRuleForPackage}
-        style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}
-      >
-        <label>
-          #<br />
-          <input
-            type="number"
-            name="sequence"
-            defaultValue={nextRuleSequence}
-            style={{ width: 60 }}
-            required
-          />
-        </label>
-        <label>
-          Cutoff
-          <br />
-          <input
-            type="text"
-            name="cutoff"
-            placeholder="45+ days before departure"
-            required
-            style={{ width: 220 }}
-          />
-        </label>
-        <label>
-          Deduction
-          <br />
-          <input
-            type="text"
-            name="deduction"
-            placeholder="25% of package cost"
-            required
-            style={{ width: 220 }}
-          />
-        </label>
-        <button type="submit">Add rule</button>
-      </form>
-    </main>
+        <div style={{ marginTop: "1rem" }}>
+          <form
+            action={addInstallmentForPackage}
+            className="form-grid"
+          >
+            <div className="field">
+              <label className="field-label" htmlFor="sequence">#</label>
+              <input
+                type="number"
+                id="sequence"
+                name="sequence"
+                defaultValue={nextInstallmentSequence}
+                style={{ width: 60 }}
+                required
+              />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="label">Label</label>
+              <input
+                type="text"
+                id="label"
+                name="label"
+                placeholder="1st Installment"
+                required
+              />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="amountPaise">Amount (paise)</label>
+              <input
+                type="number"
+                id="amountPaise"
+                name="amountPaise"
+                placeholder="700000"
+                required
+              />
+            </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label className="field-label" htmlFor="dueBy">Due by</label>
+              <input
+                type="text"
+                id="dueBy"
+                name="dueBy"
+                placeholder="At the time of booking"
+                required
+              />
+            </div>
+            <div className="field">
+              <button type="submit" className="btn btn-primary">
+                Add installment
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="section-title" style={{ marginTop: 0 }}>Refund &amp; cancellation policy</h2>
+        <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem", margin: "0 0 1rem 0" }}>
+          Note: The first installment is non-refundable in all cases.
+        </p>
+
+        {rules.length === 0 ? (
+          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>
+            No cancellation rules yet.
+          </p>
+        ) : (
+          <div className="table-wrapper" style={{ border: "none", borderRadius: 0 }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 50 }}>#</th>
+                  <th>Cutoff</th>
+                  <th>Deduction</th>
+                  <th style={{ width: 80 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map((rule) => (
+                  <tr key={rule.id}>
+                    <td style={{ fontWeight: 500 }}>{rule.sequence}</td>
+                    <td>{rule.cutoff}</td>
+                    <td>{rule.deduction}</td>
+                    <td>
+                      <form action={deleteCancellationRule.bind(null, packageId, rule.id)}>
+                        <button type="submit" className="btn btn-danger btn-sm">
+                          Delete
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form
+          action={addCancellationRuleForPackage}
+          className="form-grid"
+          style={{ marginTop: "1rem" }}
+        >
+          <div className="field">
+            <label className="field-label" htmlFor="sequence">#</label>
+            <input
+              type="number"
+              id="sequence"
+              name="sequence"
+              defaultValue={nextRuleSequence}
+              style={{ width: 60 }}
+              required
+            />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="cutoff">Cutoff</label>
+            <input
+              type="text"
+              id="cutoff"
+              name="cutoff"
+              placeholder="45+ days before departure"
+              required
+            />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="deduction">Deduction</label>
+            <input
+              type="text"
+              id="deduction"
+              name="deduction"
+              placeholder="25% of package cost"
+              required
+            />
+          </div>
+          <div className="field">
+            <button type="submit" className="btn btn-primary">
+              Add rule
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
   );
+}
+
+function pricePaise(paise: number) {
+  const rupees = paise / 100;
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(rupees);
 }

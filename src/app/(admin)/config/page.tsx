@@ -22,48 +22,80 @@ export default async function ConfigPage({
     .map((contact) => `${contact.name}, ${contact.phone}`)
     .join("\n");
   const holdingReplyMessage = getHoldingReplyMessage(config);
+  const existingAdminPassword =
+    (config?.config as { adminPassword?: string } | undefined)?.adminPassword ?? "";
+  const passwordHint = existingAdminPassword
+    ? "(set — leave blank to keep current)"
+    : "(not set)";
 
   return (
-    <main>
-      <h1>Escalation contacts</h1>
-      <p style={{ color: "#666" }}>
-        Active config version: {config?.version ?? "none"}. Saving writes a new version; the
-        previous one is kept, not overwritten.
-      </p>
+    <>
+      <div className="page-header">
+        <h1 className="page-title">Configuration</h1>
+        <p className="page-subtitle">
+          Active config version: <strong>{config?.version ?? "none"}</strong>. Saving writes a
+          new version; the previous one is kept, not overwritten.
+        </p>
+      </div>
 
-      {error ? <p style={{ color: "#b00020" }}>{error}</p> : null}
-      {saved ? <p style={{ color: "#0a7d34" }}>Saved.</p> : null}
+      {error ? <p className="text-error">{error}</p> : null}
+      {saved ? <p className="text-success">Saved.</p> : null}
 
-      <form action={updateTenantConfig}>
-        <label htmlFor="escalationContacts">One contact per line, format: Name, Phone</label>
-        <br />
-        <textarea
-          id="escalationContacts"
-          name="escalationContacts"
-          rows={6}
-          cols={40}
-          defaultValue={contactsText}
-          style={{ fontFamily: "inherit", fontSize: "1rem", marginTop: "0.5rem" }}
-        />
-        <br />
+      <div className="card">
+        <form action={updateTenantConfig}>
+          <div className="field">
+            <label className="field-label" htmlFor="escalationContacts">
+              Escalation contacts
+            </label>
+            <p className="field-hint">One per line, format: Name, Phone</p>
+            <textarea
+              id="escalationContacts"
+              name="escalationContacts"
+              rows={6}
+              defaultValue={contactsText}
+              style={{ fontFamily: "monospace", marginTop: "0.5rem" }}
+            />
+          </div>
 
-        <label htmlFor="holdingReplyMessage" style={{ display: "block", marginTop: "1.5rem" }}>
-          Holding reply (sent to a traveller whenever the bot hands off to a human)
-        </label>
-        <br />
-        <textarea
-          id="holdingReplyMessage"
-          name="holdingReplyMessage"
-          rows={3}
-          cols={40}
-          defaultValue={holdingReplyMessage}
-          style={{ fontFamily: "inherit", fontSize: "1rem", marginTop: "0.5rem" }}
-        />
-        <br />
-        <button type="submit" style={{ marginTop: "1rem" }}>
-          Save
-        </button>
-      </form>
-    </main>
+          <div className="field">
+            <label className="field-label" htmlFor="holdingReplyMessage">
+              Holding reply
+            </label>
+            <p className="field-hint">
+              Sent to a traveller whenever the bot hands off to a human
+            </p>
+            <textarea
+              id="holdingReplyMessage"
+              name="holdingReplyMessage"
+              rows={3}
+              defaultValue={holdingReplyMessage}
+              style={{ marginTop: "0.5rem" }}
+            />
+          </div>
+
+          <div className="field">
+            <label className="field-label" htmlFor="adminPassword">
+              Admin panel password {passwordHint}
+            </label>
+            <p className="field-hint">
+              Shared password for /admin access. At least 6 characters.
+            </p>
+            <input
+              id="adminPassword"
+              name="adminPassword"
+              type="password"
+              placeholder={existingAdminPassword ? "Leave blank to keep current password" : "At least 6 characters"}
+              style={{ marginTop: "0.5rem" }}
+            />
+          </div>
+
+          <div className="field">
+            <button type="submit" className="btn btn-primary">
+              Save configuration
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
   );
 }

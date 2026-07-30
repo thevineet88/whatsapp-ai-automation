@@ -1,8 +1,22 @@
-import { batchPriceVariants, batches, packages, tenants } from "@/lib/db/schema";
+import {
+  batchPriceVariants,
+  batches,
+  packages,
+  tenants,
+} from "@/lib/db/schema";
 import { getServerDb } from "@/lib/db/serverDb";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { createBatch, deleteBatch, updateBatch } from "./actions";
+
+const pricePaise = (paise: number) => {
+  const rupees = paise / 100;
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(rupees);
+};
 
 export default async function BatchesPage({
   params,
@@ -59,132 +73,122 @@ export default async function BatchesPage({
   const createBatchForPackage = createBatch.bind(null, packageId);
 
   return (
-    <main>
-      <p>
-        <Link href={`/packages/${packageId}`}>&larr; {pkg.name}</Link>
-        {" · "}
-        <Link href={`/packages/${packageId}/payment-schedule`}>Payment schedule</Link>
-      </p>
-      <h1>Batches &mdash; {pkg.name}</h1>
-      {error ? <p style={{ color: "#b00020" }}>{error}</p> : null}
-      {saved ? <p style={{ color: "#0a7d34" }}>Saved.</p> : null}
+    <>
+      <Link href={`/packages/${packageId}`} className="back-link">
+        &larr; {pkg.name}
+      </Link>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "2rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-            <th style={{ padding: "0.4rem 0" }}>Departure</th>
-            <th>Seats total</th>
-            <th>Seats available</th>
-            <th>Starting price (paise)</th>
-            <th>Last booking date</th>
-            <th>Status</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((batch) => {
-            const updateBatchForRow = updateBatch.bind(null, packageId, batch.id);
-            const deleteBatchForRow = deleteBatch.bind(null, packageId, batch.id);
-            const isFull = batch.seatsAvailable <= 0;
-            const variantsText = (variantsByBatch.get(batch.id) ?? [])
-              .map((variant) => `${variant.occupancyType}:${variant.pricePaise}`)
-              .join("\n");
-            return (
-              <tr key={batch.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td colSpan={7} style={{ padding: "0.5rem 0" }}>
-                  <form
-                    action={updateBatchForRow}
-                    style={{
-                      display: "flex",
-                      gap: "0.5rem",
-                      alignItems: "flex-start",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <input type="date" name="departureDate" defaultValue={batch.departureDate} />
-                    <input
-                      type="number"
-                      name="seatsTotal"
-                      defaultValue={batch.seatsTotal}
-                      style={{ width: 90 }}
-                    />
-                    <input
-                      type="number"
-                      name="seatsAvailable"
-                      defaultValue={batch.seatsAvailable}
-                      style={{ width: 100 }}
-                    />
-                    <input
-                      type="number"
-                      name="startingPricePaise"
-                      defaultValue={batch.startingPricePaise}
-                      style={{ width: 130 }}
-                    />
-                    <input
-                      type="date"
-                      name="lastBookingDate"
-                      defaultValue={batch.lastBookingDate ?? ""}
-                    />
-                    <textarea
-                      name="priceVariants"
-                      rows={2}
-                      placeholder="Room-type prices, optional. One per line: occupancy:pricePaise"
-                      defaultValue={variantsText}
-                      style={{ width: 260 }}
-                    />
-                    <span style={{ color: isFull ? "#b00020" : "#0a7d34" }}>
-                      {isFull ? "Full" : "Open"}
-                    </span>
-                    <button type="submit">Save</button>
-                  </form>
-                  <form action={deleteBatchForRow} style={{ marginTop: "0.25rem" }}>
-                    <button type="submit">Delete</button>
+      <div className="page-header">
+        <h1 className="page-title">Batches</h1>
+        <p className="page-subtitle">
+          {pkg.name} &middot; {rows.length} {rows.length === 1 ? "batch" : "batches"}
+        </p>
+      </div>
+
+      {error ? <p className="text-error">{error}</p> : null}
+      {saved ? <p className="text-success">Saved.</p> : null}
+
+      <h2 className="section-title">Existing batches</h2>
+      <div className="table-wrapper">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Departure</th>
+              <th>Seats</th>
+              <th>Starting price</th>
+              <th>Last booking</th>
+              <th>Status</th>
+              <th style={{ width: 80 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((batch) => (
+              <tr key={batch.id}>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  <strong>{batch.departureDate}</strong>
+                </td>
+                <td>
+                  {batch.seatsAvailable} / {batch.seatsTotal}
+                </td>
+                <td>{pricePaise(batch.startingPricePaise)}</td>
+                <td>{batch.lastBookingDate ?? <span style={{ color: "var(--muted-foreground)" }}>—</span>}</td>
+                <td>
+                  <span className={`badge ${batch.seatsAvailable <= 0 ? "badge-full" : "badge-available"}`}>
+                    {batch.seatsAvailable <= 0 ? "Full" : "Open"}
+                  </span>
+                </td>
+                <td>
+                  <form action={deleteBatch.bind(null, packageId, batch.id)}>
+                    <button type="submit" className="btn btn-danger btn-sm">
+                      Delete
+                    </button>
                   </form>
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {rows.length === 0 ? <p>No batches yet.</p> : null}
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 ? <div className="empty-state">No batches yet.</div> : null}
+      </div>
 
-      <h2>Add batch</h2>
-      <form
-        action={createBatchForPackage}
-        style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}
-      >
-        <label>
-          Departure
-          <br />
-          <input type="date" name="departureDate" required />
-        </label>
-        <label>
-          Seats total
-          <br />
-          <input type="number" name="seatsTotal" required style={{ width: 90 }} />
-        </label>
-        <label>
-          Seats available
-          <br />
-          <input type="number" name="seatsAvailable" required style={{ width: 100 }} />
-        </label>
-        <label>
-          Starting price (paise)
-          <br />
-          <input type="number" name="startingPricePaise" required style={{ width: 130 }} />
-        </label>
-        <label>
-          Last booking date (optional)
-          <br />
-          <input type="date" name="lastBookingDate" />
-        </label>
-        <label>
-          Room-type prices (optional, one per line: occupancy:pricePaise)
-          <br />
-          <textarea name="priceVariants" rows={2} style={{ width: 260 }} />
-        </label>
-        <button type="submit">Add</button>
-      </form>
-    </main>
+      <h2 className="section-title">Add new batch</h2>
+      <div className="card">
+        <form action={createBatchForPackage} className="form-grid">
+          <div className="field">
+            <label className="field-label" htmlFor="departureDate">
+              Departure date
+            </label>
+            <input type="date" id="departureDate" name="departureDate" required />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="seatsTotal">
+              Seats total
+            </label>
+            <input type="number" id="seatsTotal" name="seatsTotal" required />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="seatsAvailable">
+              Seats available
+            </label>
+            <input type="number" id="seatsAvailable" name="seatsAvailable" required />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="startingPricePaise">
+              Starting price (paise)
+            </label>
+            <input
+              type="number"
+              id="startingPricePaise"
+              name="startingPricePaise"
+              placeholder="e.g. 1500000 for ₹15,000"
+              required
+            />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="lastBookingDate">
+              Last booking date (optional)
+            </label>
+            <input type="date" id="lastBookingDate" name="lastBookingDate" />
+          </div>
+          <div className="field" style={{ gridColumn: "1 / -1" }}>
+            <label className="field-label" htmlFor="priceVariants">
+              Room-type prices (optional)
+            </label>
+            <textarea
+              id="priceVariants"
+              name="priceVariants"
+              rows={3}
+              placeholder="One per line: occupancy:pricePaise (e.g. double:1800000)"
+            />
+            <p className="field-hint">Format: occupancy:pricePaise, one per line. Leave blank if not needed.</p>
+          </div>
+          <div className="field" style={{ gridColumn: "1 / -1" }}>
+            <button type="submit" className="btn btn-primary">
+              Add batch
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
   );
 }

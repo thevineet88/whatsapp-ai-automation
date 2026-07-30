@@ -1,3 +1,5 @@
+"use client";
+
 import { packageCategoryValues } from "@/lib/core/package";
 import type { packages } from "@/lib/db/schema";
 
@@ -18,70 +20,107 @@ export function PackageForm({
 
   return (
     <form action={action}>
-      <Field label="Name" htmlFor="name">
-        <input id="name" name="name" defaultValue={defaults?.name} required />
-      </Field>
-      <Field label="Slug (lowercase-kebab-case)" htmlFor="slug">
-        <input id="slug" name="slug" defaultValue={defaults?.slug} required />
-      </Field>
-      <Field label="Category (select one or more)" htmlFor="category">
-        <select id="category" name="category" multiple defaultValue={defaults?.category ?? []}>
-          {packageCategoryValues.map((category) => (
-            <option key={category} value={category}>
-              {category}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Duration (days)" htmlFor="durationDays">
-        <input
-          id="durationDays"
-          type="number"
-          name="durationDays"
-          defaultValue={defaults?.durationDays}
-          required
-        />
-      </Field>
-      <Field label="Duration (nights)" htmlFor="durationNights">
-        <input
-          id="durationNights"
-          type="number"
-          name="durationNights"
-          defaultValue={defaults?.durationNights}
-          required
-        />
-      </Field>
-      <Field label="Departure point" htmlFor="departurePoint">
-        <input
-          id="departurePoint"
-          name="departurePoint"
-          defaultValue={defaults?.departurePoint}
-          required
-        />
-      </Field>
-      <Field label="Travel mode" htmlFor="travelMode">
-        <input id="travelMode" name="travelMode" defaultValue={defaults?.travelMode} required />
-      </Field>
-      <Field label="Return point" htmlFor="returnPoint">
-        <input id="returnPoint" name="returnPoint" defaultValue={defaults?.returnPoint} required />
-      </Field>
-      <Field label="Flight information (optional)" htmlFor="flightInformation">
-        <input
-          id="flightInformation"
-          name="flightInformation"
-          defaultValue={defaults?.flightInformation ?? ""}
-        />
-      </Field>
-      <Field label="Advisory" htmlFor="advisory">
-        <textarea
-          id="advisory"
-          name="advisory"
-          rows={3}
-          defaultValue={defaults?.advisory}
-          required
-        />
-      </Field>
-      <Field label="Highlights (one per line)" htmlFor="highlights">
+      <div className="form-grid">
+        <div className="field">
+          <label className="field-label" htmlFor="name">
+            Name
+          </label>
+          <input id="name" name="name" defaultValue={defaults?.name} required />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="slug">
+            Slug (lowercase-kebab-case)
+          </label>
+          <input id="slug" name="slug" defaultValue={defaults?.slug} required />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="category">
+            Category (select one or more)
+          </label>
+          <select id="category" name="category" multiple defaultValue={defaults?.category ?? []}>
+            {packageCategoryValues.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+          <p className="field-hint">Ctrl+Click to select multiple categories</p>
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="durationDays">
+            Duration (days)
+          </label>
+          <input
+            id="durationDays"
+            type="number"
+            name="durationDays"
+            defaultValue={defaults?.durationDays}
+            required
+          />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="durationNights">
+            Duration (nights)
+          </label>
+          <input
+            id="durationNights"
+            type="number"
+            name="durationNights"
+            defaultValue={defaults?.durationNights}
+            required
+          />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="departurePoint">
+            Departure point
+          </label>
+          <input
+            id="departurePoint"
+            name="departurePoint"
+            defaultValue={defaults?.departurePoint}
+            required
+          />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="travelMode">
+            Travel mode
+          </label>
+          <input id="travelMode" name="travelMode" defaultValue={defaults?.travelMode} required />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="returnPoint">
+            Return point
+          </label>
+          <input
+            id="returnPoint"
+            name="returnPoint"
+            defaultValue={defaults?.returnPoint}
+            required
+          />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="flightInformation">
+            Flight information (optional)
+          </label>
+          <input
+            id="flightInformation"
+            name="flightInformation"
+            defaultValue={defaults?.flightInformation ?? ""}
+          />
+        </div>
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="advisory">
+          Advisory
+        </label>
+        <textarea id="advisory" name="advisory" rows={3} defaultValue={defaults?.advisory} required />
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="highlights">
+          Trip highlights (one per line)
+        </label>
         <textarea
           id="highlights"
           name="highlights"
@@ -89,11 +128,25 @@ export function PackageForm({
           defaultValue={defaults?.highlights?.join("\n")}
           required
         />
-      </Field>
-      <Field label="Itinerary (one per line, format: day|title|description)" htmlFor="itinerary">
-        <textarea id="itinerary" name="itinerary" rows={8} defaultValue={itineraryText} required />
-      </Field>
-      <Field label="Inclusions (one per line)" htmlFor="inclusions">
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="itinerary">
+          Day-by-day itinerary (one per line, format: day|title|description)
+        </label>
+        <textarea
+          id="itinerary"
+          name="itinerary"
+          rows={8}
+          defaultValue={itineraryText}
+          required
+        />
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="inclusions">
+          Inclusions (one per line)
+        </label>
         <textarea
           id="inclusions"
           name="inclusions"
@@ -101,8 +154,12 @@ export function PackageForm({
           defaultValue={defaults?.inclusions?.join("\n")}
           required
         />
-      </Field>
-      <Field label="Exclusions (one per line)" htmlFor="exclusions">
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="exclusions">
+          Exclusions (one per line)
+        </label>
         <textarea
           id="exclusions"
           name="exclusions"
@@ -110,8 +167,12 @@ export function PackageForm({
           defaultValue={defaults?.exclusions?.join("\n")}
           required
         />
-      </Field>
-      <Field label="Points to note (one per line)" htmlFor="pointsToNote">
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="pointsToNote">
+          Points to note (one per line)
+        </label>
         <textarea
           id="pointsToNote"
           name="pointsToNote"
@@ -119,32 +180,13 @@ export function PackageForm({
           defaultValue={defaults?.pointsToNote?.join("\n")}
           required
         />
-      </Field>
-      <button type="submit" style={{ marginTop: "1rem" }}>
-        {submitLabel}
-      </button>
-    </form>
-  );
-}
+      </div>
 
-function Field({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{ marginBottom: "0.9rem" }}>
-      <label
-        htmlFor={htmlFor}
-        style={{ display: "block", fontWeight: "bold", marginBottom: "0.25rem" }}
-      >
-        {label}
-      </label>
-      {children}
-    </div>
+      <div className="field">
+        <button type="submit" className="btn btn-primary">
+          {submitLabel}
+        </button>
+      </div>
+    </form>
   );
 }
