@@ -1,0 +1,39 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    # One PR per group, not dozens of tiny PRs a day. Major bumps stay
+    # separate so they get eyes before merge.
+    groups:
+      runtime-minor-patch:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@biomejs/*"
+          - "@testcontainers/*"
+          - "drizzle-kit"
+          - "drizzle-orm"
+          - "typescript"
+          - "vitest"
+        update-types:
+          - "minor"
+          - "patch"
+    labels:
+      - "dependencies"
+      - "auto-merge"
+    # Only direct dependencies. Transitives get pulled in by the lockfile
+    # whenever a direct dependency is updated anyway.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Don't open more than 5 PRs at once so merges stay reviewable.
+    open-pull-requests-limit: 5
