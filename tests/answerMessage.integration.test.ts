@@ -397,20 +397,44 @@ describe("handleInboundMessage (intent router)", () => {
     expect(escalation.reason).toBe("fitness_or_health");
   });
 
-  it("escalates real booking intent instead of taking the booking", async () => {
+  it("fires the booking collector for booking intent, then escalates with structured data on the reply", async () => {
     const sent: string[] = [];
+    // First message: the collector fires and sends the ask-all booking form.
+    // It does NOT escalate yet — the form has to come first so the human
+    // team gets structured data instead of a wall of WhatsApp text.
     await handleInboundMessage(
       { db, createClient: () => stubClient(sent), understandingClassifier: catalogueClassifier },
       buildJob("msg-book", "I want to book this trip now, please confirm my seat"),
     );
 
+    expect(sent).toHaveLength(1);
     expect(sent[0]).toMatch(/team/i);
+    expect(sent[0]).toMatch(/passengers/i);
+
+    let conversation = await getConversation();
+    expect(conversation.status).toBe("open");
+    expect(conversation.phase).toBe("collecting_booking");
+
+    // Second message: the traveller's reply. The collector extracts whatever
+    // it can, sends a handoff message, and escalates with the summary.
+    await handleInboundMessage(
+      { db, createClient: () => stubClient(sent), understandingClassifier: catalogueClassifier },
+      buildJob("msg-reply", "3 passengers, a@b.com, single room, from Mumbai"),
+    );
+
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toMatch(/team/i);
+
+    conversation = await getConversation();
+    expect(conversation.status).toBe("awaiting_human");
+    expect(conversation.phase).toBeNull();
 
     const [escalation] = await db
       .select()
       .from(escalations)
       .where(eq(escalations.tenantId, tenantId));
-    expect(escalation.reason).toBe("booking_or_payment");
+    expect(escalation.reason).toBe("booking_request");
+    expect(escalation.severity).toBe("hard");
   });
 
   it("answers the how-to-book FAQ without escalating", async () => {
@@ -597,11 +621,21 @@ describe("handleInboundMessage (intent router)", () => {
 
   it("keeps answering factual questions while a handoff is pending, and flags the handoff", async () => {
     const sent: string[] = [];
+    // First message: a booking request that goes through the collector.
+    // After the traveller's reply, the collector escalates with structured
+    // data and the conversation lands on awaiting_human.
     await handleInboundMessage(
       { db, createClient: () => stubClient(sent), understandingClassifier: catalogueClassifier },
       buildJob("msg-escalate-first", "I want to book this trip now"),
     );
     expect(sent).toHaveLength(1);
+
+    await handleInboundMessage(
+      { db, createClient: () => stubClient(sent), understandingClassifier: catalogueClassifier },
+      buildJob("msg-reply", "3 passengers, a@b.com, single room, from Mumbai"),
+    );
+
+    expect(sent).toHaveLength(2);
     expect((await getConversation()).status).toBe("awaiting_human");
 
     await handleInboundMessage(
@@ -613,9 +647,9 @@ describe("handleInboundMessage (intent router)", () => {
     // is still answered plainly from the tool layer. No reminder suffix -
     // that only belongs on the escalating reply itself, not on every answer
     // that follows it.
-    expect(sent).toHaveLength(2);
-    expect(sent[1]).toContain("Rs 21,111");
-    expect(sent[1]).not.toMatch(/team is also looking into/i);
+    expect(sent).toHaveLength(3);
+    expect(sent[2]).toContain("Rs 21,111");
+    expect(sent[2]).not.toMatch(/team is also looking into/i);
   });
 
   it("goes silent only once a human is actually active in the thread", async () => {
