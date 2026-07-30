@@ -3,6 +3,10 @@ import { getServerDb } from "@/lib/db/serverDb";
 import { getActiveTenantConfig, getHoldingReplyMessage } from "@/lib/db/tenantConfig";
 import { updateTenantConfig } from "./actions";
 
+// Server-rendered at request time so Next.js does not try to prerender this
+// page during `next build` — which has no live database to query against.
+export const dynamic = "force-dynamic";
+
 export default async function ConfigPage({
   searchParams,
 }: {
