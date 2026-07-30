@@ -1,57 +1,13 @@
 import { whatsappWebhookPayloadSchema } from "@/lib/core/webhook";
-import type { Db } from "@/lib/db/client";
 import { createDb } from "@/lib/db/client";
 import { processedWebhooks, whatsappAccounts } from "@/lib/db/schema";
-import {
-  type WhatsappInboundQueue,
-  createWhatsappInboundQueue,
-} from "@/lib/queue/whatsappInboundQueue";
-import { type RedisClient, createBullMQConnection, createRedis } from "@/lib/redis/client";
+import { createWhatsappInboundQueue } from "@/lib/queue/whatsappInboundQueue";
+import { createBullMQConnection, createRedis } from "@/lib/redis/client";
 import { verifySignature } from "@/lib/whatsapp/signature";
 import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 const DEDUPE_TTL_SECONDS = 60 * 60 * 24 * 7;
-
-type Context = {
-  db: Db;
-  dedupeRedis: RedisClient;
-  queue: WhatsappInboundQueue;
-};
-
-let context: Context | null = null;
-
-// Lazily built from process.env on first request so tests can point env vars
-// at testcontainers before the module's handlers are ever invoked.
-function getContext(): Context {
-  if (context) return context;
-
-  const databaseUrl = requireEnv("DATABASE_URL");
-  const redisUrl = requireEnv("REDIS_URL");
-
-  context = {
-    db: createDb(databaseUrl),
-    dedupeRedis: createRedis(redisUrl),
-    queue: createWhatsappInboundQueue(createBullMQConnection(redisUrl)),
-  };
-  return context;
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return value;
-}
-
-export async function closeContextForTests(): Promise<void> {
-  if (!context) return;
-  await context.queue.close();
-  context.dedupeRedis.disconnect();
-  await context.db.$pool.end();
-  context = null;
-}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const mode = req.nextUrl.searchParams.get("hub.mode");
@@ -68,7 +24,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const rawBody = await req.text();
-  const appSecret = requireEnv("WHATSAPP_APP_SECRET");
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (!appSecret) {
+    return new NextResponse("Misconfigured", { status: 500 });
+  }
 
   const signatureHeader = req.headers.get("x-hub-signature-256");
   if (!verifySignature(rawBody, signatureHeader, appSecret)) {
@@ -88,7 +47,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const { db, dedupeRedis, queue } = getContext();
+  const databaseUrl = process.env.DATABASE_URL;
+  const redisUrl = process.env.REDIS_URL;
+  if (!databaseUrl || !redisUrl) {
+    return new NextResponse("Misconfigured", { status: 500 });
+  }
+
+  const db = createDb(databaseUrl);
+  const dedupeRedis = createRedis(redisUrl);
+  const queue = createWhatsappInboundQueue(createBullMQConnection(redisUrl));
 
   try {
     for (const entry of parsed.data.entry) {
@@ -109,16 +76,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         for (const message of messages) {
-          // Two-layer dedupe. Redis is the fast path, but it is a cache: a
-          // flush, an eviction or a failover would silently reopen the door
-          // to double processing, and invariant 7 says duplicates must be
-          // impossible, not unlikely. The unique index on
-          // processed_webhooks.meta_message_id is the durable authority.
           const dedupeKey = `wa:dedupe:${message.id}`;
           const wasSet = await dedupeRedis.set(dedupeKey, "1", "EX", DEDUPE_TTL_SECONDS, "NX");
-          if (wasSet !== "OK") {
-            continue;
-          }
+          if (wasSet !== "OK") continue;
 
           const claimed = await db
             .insert(processedWebhooks)
@@ -126,9 +86,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             .onConflictDoNothing()
             .returning();
 
-          if (claimed.length === 0) {
-            continue;
-          }
+          if (claimed.length === 0) continue;
 
           await queue.add(
             "inbound-message",

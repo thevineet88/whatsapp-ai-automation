@@ -69,8 +69,6 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  const { closeContextForTests } = await import("../src/app/api/webhook/whatsapp/route");
-  await closeContextForTests();
   await inspectQueue.close();
   await db.$pool.end();
   await postgres.stop();
