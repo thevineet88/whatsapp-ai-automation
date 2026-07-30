@@ -1,3 +1,4 @@
+import path from "path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -12,6 +13,7 @@ const nextConfig: NextConfig = {
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),
       "@valkey/valkey-glide$": false,
+      "@": path.resolve(__dirname, "./src"),
     };
     return config;
   },
