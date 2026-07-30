@@ -19,7 +19,9 @@ export type KnownIntentType =
   | "duration"
   | "installments"
   | "how_to_book"
-  | "cancellation_policy";
+  | "cancellation_policy"
+  | "custom_package_request"
+  | "booking_request";
 
 export type ClassifiedIntent =
   | { kind: "escalate"; reason: EscalationReason }
@@ -319,6 +321,81 @@ const KNOWN_INTENT_KEYWORDS: { type: KnownIntentType; keywords: string[] }[] = [
       "refund milega",
     ],
   },
+  {
+    // Custom-package requests bypass the catalogue. They get a structured
+    // "tell me more" ask-all-at-once reply instead, and the rest of the
+    // conversation follows the collection flow rather than the usual Q&A.
+    type: "custom_package_request",
+    keywords: [
+      "custom package",
+      "custom packages",
+      "customised package",
+      "customized package",
+      "customise",
+      "customize",
+      "customised trip",
+      "customized trip",
+      "custom tour",
+      "tailor made",
+      "tailor-made",
+      "tailormade",
+      "bespoke",
+      "personalized package",
+      "personalised package",
+      "honeymoon package",
+      "honeymoon trip",
+      "honeymoon tour",
+      "family package",
+      "corporate package",
+      "group package",
+      "private trip",
+      "private tour",
+      "modify this trip",
+      "customise this trip",
+      "i want a trip",
+      "we want a trip",
+      "plan a trip",
+      "plan my trip",
+      "any custom",
+      "any customised",
+    ],
+  },
+  {
+    // Booking intent. Detected when the traveller moves from asking about a
+    // trip to wanting to actually book one. The catalogue answer stays up to
+    // here; the booking flow takes over with a one-shot ask-all message.
+    type: "booking_request",
+    keywords: [
+      "i want to book",
+      "want to book",
+      "i want to confirm",
+      "confirm booking",
+      "confirm my booking",
+      "i want to reserve",
+      "i want to register",
+      "register me",
+      "register for",
+      "book this trip",
+      "book this package",
+      "book the trip",
+      "book the package",
+      "i want to sign up",
+      "i'll book",
+      "we will book",
+      "we'll book",
+      "how to book this",
+      "how do i book this",
+      "booking karo",
+      "book karo",
+      "book karna",
+      "ticket book",
+      "tickets book",
+      "book my seat",
+      "reserve my seat",
+      "register for the trip",
+      "register for this trip",
+    ],
+  },
 ];
 
 // Deterministic pre-gate that runs before the LLM understanding pass. It is
@@ -331,6 +408,19 @@ export function classifyEscalationKeywords(text: string): EscalationReason | nul
   for (const { reason, keywords } of ESCALATION_KEYWORDS) {
     if (keywords.some((keyword) => normalized.includes(keyword))) {
       return reason;
+    }
+  }
+  return null;
+}
+
+// Like classifyIntent but skips the escalation pre-gate. Used by the
+// collector branch in the router, which needs to claim booking / custom-
+// package requests before the generic escalation handler sees them.
+export function classifyKnownIntent(text: string): { type: KnownIntentType } | null {
+  const normalized = text.toLowerCase();
+  for (const { type, keywords } of KNOWN_INTENT_KEYWORDS) {
+    if (keywords.some((keyword) => normalized.includes(keyword))) {
+      return { type };
     }
   }
   return null;

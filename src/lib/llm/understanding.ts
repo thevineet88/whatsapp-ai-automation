@@ -32,6 +32,8 @@ Return:
 - package_overview: a trip is named with no specific question attached ("Rameshwaram trip?", "tell me about Sikkim", "Gokarna?"). Use this whenever they name a trip and want to know about it generally.
 - greeting: hello, hi, thanks, ok, and other social messages
 - browse_packages: asking what trips exist, or for a recommendation, WITHOUT naming a specific trip
+- custom_package_request: the traveller wants a tailor-made trip (custom, personalised, honeymoon, etc.) that is not in the catalogue. DO NOT list packages here - this request is handled separately by the collector flow.
+- booking_request: the traveller wants to actually book or register for a specific trip. "How do I book" is how_to_book; "I want to book this" is booking_request. USE booking_request ONLY when the message contains a clear booking verb ("book", "reserve", "register", "sign up", "confirm seat") OR the traveller is replying to a booking form. Naming a trip alone ("kedarnath trip", "tell me about X") is package_overview, NOT booking_request.
 - other: anything that fits nothing above
 
 If the message contains a second, different question, put it in secondaryIntent ("when is the Ayodhya trip and how much?" is intent=batches, secondaryIntent=price). Otherwise secondaryIntent is null.

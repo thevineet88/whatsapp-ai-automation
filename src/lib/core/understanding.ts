@@ -29,6 +29,15 @@ export const understoodIntentValues = [
   // conversations before anyone had asked anything.
   "greeting",
   "browse_packages",
+  // Traveller wants a tailor-made package rather than one of the catalogue
+  // trips. Triggers the multi-turn collection flow that asks for destination,
+  // dates, travellers, budget, etc., and escalates with a structured summary
+  // once the human team has enough to respond.
+  "custom_package_request",
+  // Traveller wants to book a specific trip. Triggers a similar collection
+  // flow that asks for passenger details, occupancy, and pickup preference,
+  // then escalates with a structured booking request.
+  "booking_request",
   "other",
 ] as const;
 export const understoodIntentSchema = z.enum(understoodIntentValues);

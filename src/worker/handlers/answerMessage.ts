@@ -5,6 +5,10 @@ import { getActiveTenantConfig, getHoldingReplyMessage } from "@/lib/db/tenantCo
 import type { EscalationSeverity } from "@/lib/guardrails/escalationPolicy";
 import { type AnswerGenerator, createDeepSeekAnswerGenerator } from "@/lib/llm/answerModel";
 import {
+  type CollectorExtractor,
+  createDeepSeekCollectorExtractor,
+} from "@/lib/llm/collectorExtractor";
+import {
   type UnderstandingClassifier,
   createDeepSeekUnderstandingClassifier,
 } from "@/lib/llm/understanding";
@@ -38,6 +42,7 @@ export type AnswerMessageDeps = {
   embedder?: Embedder;
   answerGenerator?: AnswerGenerator;
   understandingClassifier?: UnderstandingClassifier;
+  collectorExtractor?: CollectorExtractor;
 };
 
 export async function handleInboundMessage(
@@ -50,6 +55,7 @@ export async function handleInboundMessage(
     embedder = defaultEmbedder(),
     answerGenerator = defaultAnswerGenerator(),
     understandingClassifier = defaultUnderstandingClassifier(),
+    collectorExtractor = defaultCollectorExtractor(),
   } = deps;
   const { tenantId, whatsappAccountId, message } = job;
 
@@ -139,7 +145,12 @@ export async function handleInboundMessage(
     // Idempotent per invariant 7. A job that is retried after a failed send
     // must not persist the traveller's message a second time; the unique index
     // on meta_message_id makes that impossible rather than merely unlikely.
-    await db
+    // The boolean tells us whether the row was actually new (inserted) vs
+    // already there from a prior job attempt — the latter means we should
+    // not route again, because the bot has already replied (or decided to
+    // escalate) for this message and a second pass would process the same
+    // message a second time.
+    const insertedInbound = await db
       .insert(messages)
       .values({
         tenantId,
@@ -148,7 +159,32 @@ export async function handleInboundMessage(
         direction: "inbound",
         content: isUnsupportedText ? `[${message.type} message]` : inboundContent,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: messages.id });
+
+    if (insertedInbound.length === 0) {
+      // This exact Meta message id was already processed by a prior job
+      // attempt. The outbound reply already happened (or the job is
+      // mid-retry and the reply is in flight). Either way, we must not
+      // route again — doing so would advance the collector state, send a
+      // second WhatsApp reply, and look like the bot double-answered.
+      console.log("wa handler: skipping duplicate inbound message", {
+        tenantId,
+        conversationId: conversation.id,
+        metaMessageId: message.id,
+      });
+      return;
+    }
+
+    // When an admin has taken over a thread (status === human_active), the
+    // bot stays silent: we already stored the inbound message above so the
+    // admin panel sees it, but we skip the router and never send a WhatsApp
+    // reply. The admin's manual reply flow does not need the bot to be
+    // involved; this branch ends the job and yields the lock.
+    if (conversation.status === "human_active") {
+      console.log("wa handler: skipping reply, human_active", { tenantId, conversationId: conversation.id });
+      return;
+    }
 
     if (isUnsupportedText) {
     const accessToken = requireEnv("WHATSAPP_ACCESS_TOKEN");
@@ -226,11 +262,13 @@ export async function handleInboundMessage(
         packageId: conversation.packageId,
         pendingClarificationCount: conversation.pendingClarificationCount,
         status: conversation.status,
+        phase: conversation.phase,
+        collectorData: (conversation.collectorData as Record<string, unknown> | null) ?? null,
         history,
       },
       holdingReplyMessage,
       inboundContent,
-      { embedder, answerGenerator, understandingClassifier },
+      { embedder, answerGenerator, understandingClassifier, collectorExtractor },
     );
     logStage(routeTimer);
   } catch (error) {
@@ -283,6 +321,12 @@ export async function handleInboundMessage(
       severity: result.escalateSeverity ?? "hard",
       travellerPhone: message.from,
       contacts: activeConfig?.escalationContacts.map((c) => c.name) ?? [],
+      detail: result.escalateDetail ?? null,
+      // Collector requests (custom package, booking) are per-request:
+      // each ask-all → reply pair is a separate escalation so the admin
+      // view shows them as individual line items rather than collapsing
+      // into one stale row.
+      alwaysCreate: result.escalateReason === "custom_package_request" || result.escalateReason === "booking_request",
     });
   }
 
@@ -292,6 +336,8 @@ export async function handleInboundMessage(
       packageId: result.nextPackageId,
       pendingClarificationCount: result.nextPendingClarificationCount,
       status: nextStatus(conversation.status, result.escalateSeverity),
+      phase: result.nextPhase as "collecting_custom_package" | "collecting_booking" | null,
+      collectorData: result.nextCollectorData as Record<string, unknown> | null,
       lastMessageAt: new Date(),
     })
     .where(eq(conversations.id, conversation.id));
@@ -359,7 +405,13 @@ type RecordEscalationInput = {
   severity: EscalationSeverity;
   travellerPhone: string;
   contacts: string[];
-  detail?: string;
+  detail?: string | null;
+  // Collector requests (custom_package_request, booking_request) should
+  // each write their own row so the admin view shows every request as a
+  // separate line item. Other hard escalations dedupe on
+  // (conversationId, reason, status=pending) so repeated concerns don't
+  // multiply into clutter.
+  alwaysCreate?: boolean;
 };
 
 // Hard escalations dedupe to one pending row per reason per conversation: a
@@ -370,9 +422,9 @@ type RecordEscalationInput = {
 // collapsing them hid repeated failures so thoroughly that a live outage had
 // to be reproduced by hand instead of read out of the database.
 async function recordEscalation(input: RecordEscalationInput): Promise<void> {
-  const { db, tenantId, conversationId, reason, severity } = input;
+  const { db, tenantId, conversationId, reason, severity, detail, alwaysCreate } = input;
 
-  if (severity === "hard") {
+  if (severity === "hard" && !alwaysCreate) {
     const [alreadyPending] = await db
       .select()
       .from(escalations)
@@ -385,12 +437,30 @@ async function recordEscalation(input: RecordEscalationInput): Promise<void> {
       )
       .limit(1);
 
-    if (alreadyPending) return logEscalation(input);
+    if (alreadyPending) {
+      // Update the existing pending row with the latest captured detail so
+      // the human team sees the freshest traveller information rather than
+      // a stale snapshot from the first escalation. A later message can
+      // have filled fields the first one didn't carry.
+      if (detail) {
+        await db
+          .update(escalations)
+          .set({ detail })
+          .where(
+            and(
+              eq(escalations.conversationId, conversationId),
+              eq(escalations.reason, reason),
+              eq(escalations.status, "pending"),
+            ),
+          );
+      }
+      return logEscalation(input);
+    }
   }
 
   await db
     .insert(escalations)
-    .values({ tenantId, conversationId, reason, severity, status: "pending" });
+    .values({ tenantId, conversationId, reason, severity, detail, status: "pending" });
 
   logEscalation(input);
 }
@@ -420,7 +490,7 @@ function nextStatus(
   current: ConversationStatus,
   severity: EscalationSeverity | null,
 ): ConversationStatus {
-  if (current === "human_active" || current === "closed") return current;
+  if (current === "human_active") return current;
   if (severity === "hard") return "awaiting_human";
   return current === "escalated" ? "awaiting_human" : current;
 }
@@ -442,6 +512,10 @@ function defaultEmbedder(): Embedder {
 
 function defaultAnswerGenerator(): AnswerGenerator {
   return (input) => createDeepSeekAnswerGenerator(requireEnv("DEEPSEEK_API_KEY"))(input);
+}
+
+function defaultCollectorExtractor(): CollectorExtractor {
+  return (input) => createDeepSeekCollectorExtractor(requireEnv("DEEPSEEK_API_KEY"))(input);
 }
 
 function defaultUnderstandingClassifier(): UnderstandingClassifier {

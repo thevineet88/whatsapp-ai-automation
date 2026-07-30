@@ -10,14 +10,23 @@ import {
 } from "@/lib/guardrails/escalationPolicy";
 import type { AnswerGenerator } from "@/lib/llm/answerModel";
 import { generateKnowledgeAnswer } from "@/lib/llm/generateAnswer";
+import { type CollectorExtractor } from "@/lib/llm/collectorExtractor";
 import { type UnderstandingClassifier, type UnderstandingOutput } from "@/lib/llm/understanding";
 import type { Embedder } from "@/lib/rag/embedder";
 import { listBatches } from "@/lib/tools/packages";
 import { getPaymentSchedule, getPrice } from "@/lib/tools/pricing";
 import { eq } from "drizzle-orm";
 import { type Catalogue, type CatalogueEntry, loadCatalogue } from "./catalogue";
-import { classifyEscalationKeywords, classifyIntent } from "./intent";
+import { classifyEscalationKeywords, classifyIntent, classifyKnownIntent } from "./intent";
 import { matchPackages } from "./packageMatch";
+import {
+  type CollectorData,
+  type CollectorPhase,
+  buildCollectorAskAll,
+  buildCollectorSummary,
+  buildHandoffTravelerMessage,
+  extractCollectorFields,
+} from "./collector";
 import {
   GREETING_REPLY,
   HOW_TO_BOOK_REPLY,
@@ -45,19 +54,23 @@ export type RagDeps = {
   embedder: Embedder;
   answerGenerator: AnswerGenerator;
   understandingClassifier: UnderstandingClassifier;
+  collectorExtractor?: CollectorExtractor;
 };
 
 export type ConversationStatus =
   | "open"
   | "escalated"
   | "awaiting_human"
-  | "human_active"
-  | "closed";
+  | "human_active";
 
 export type ConversationRouteState = {
   packageId: string | null;
   pendingClarificationCount: number;
   status: ConversationStatus;
+  // Collector phase. Null means normal Q&A mode.
+  phase: string | null;
+  // Structured data collected during the collector phase.
+  collectorData: Record<string, unknown> | null;
   // Oldest first. Gives the understanding pass enough context to resolve
   // follow ups like "and how much is it?" against the trip already in play.
   history: { role: "traveller" | "bot"; content: string }[];
@@ -67,6 +80,14 @@ export type RouteResult = {
   replyText: string | null;
   nextPackageId: string | null;
   nextPendingClarificationCount: number;
+  // Set by the collector flow; null means no phase change.
+  nextPhase: string | null;
+  // Updated collector data to persist alongside the phase.
+  nextCollectorData: Record<string, unknown> | null;
+  // Set by the collector flow when the traveller's structured summary
+  // should be attached to the escalation row, so the admin sees what was
+  // captured at handoff.
+  escalateDetail: string | null;
   escalateReason: string | null;
   escalateSeverity: EscalationSeverity | null;
   sourceChunkIds: string[] | null;
@@ -97,8 +118,11 @@ function noReply(state: ConversationRouteState): RouteResult {
     replyText: null,
     nextPackageId: state.packageId,
     nextPendingClarificationCount: state.pendingClarificationCount,
+    nextPhase: state.phase,
+    nextCollectorData: state.collectorData,
     escalateReason: null,
     escalateSeverity: null,
+    escalateDetail: null,
     sourceChunkIds: null,
   };
 }
@@ -115,7 +139,7 @@ export async function routeMessage(
   // over them. This is the only state that silences replies, and nothing
   // sets it automatically, so a raised escalation alone no longer strands
   // the traveller.
-  if (state.status === "human_active" || state.status === "closed") {
+  if (state.status === "human_active") {
     return noReply(state);
   }
 
@@ -133,8 +157,20 @@ export async function routeMessage(
     llmUsage: null,
   };
 
-  // Deterministic pre-gate first: the riskiest topics escalate without
-  // waiting on a model call, and cannot be talked out of it downstream.
+  // Collector intent check BEFORE the keyword pre-gate. The pre-gate's
+  // `booking_or_payment` list fires on "i want to book", but that is also
+  // the exact phrase that should start the booking collector flow
+  // (which itself escalates to reason=booking_request with a structured
+  // summary). The collector is the right handler for booking AND custom-
+  // package requests, so it claims those messages first; only true
+  // safety risks (fitness, complaint, explicit human request, refund)
+  // still go through the pre-gate.
+  //
+  // The understanding pass runs first (when no keyword escalation) so
+  // the LLM's intent can claim collector routing on phrasings that the
+  // keyword list misses — "kedarnath trip book", "book Kedarnath" —
+  // which otherwise fall through to a generic booking_or_payment
+  // escalation reply with no form sent.
   const keywordReason = classifyEscalationKeywords(text);
 
   let understanding: MessageUnderstanding | null = null;
@@ -150,11 +186,51 @@ export async function routeMessage(
       understanding = understandingOutput.understanding;
       trace.llmUsage = understandingOutput.usage;
     } catch (error) {
-      console.error("routeMessage: understanding classifier failed, using keyword fallback", {
+      console.error("routeMessage: understanding classifier failed", {
         tenantId,
         error,
       });
     }
+  }
+
+  let collectorIntent: CollectorIntent | null = null;
+  if (state.phase) {
+    collectorIntent = state.phase === "collecting_custom_package" ? "custom_package_request" : "booking_request";
+  } else {
+    // Keyword check first: deterministic and cheap. Falls back to the
+    // LLM's intent so phrasings the keyword list misses still reach the
+    // collector instead of a generic escalation reply.
+    const known = classifyKnownIntent(text);
+    if (known && (known.type === "custom_package_request" || known.type === "booking_request")) {
+      collectorIntent = known.type;
+    } else if (understanding && (understanding.intent === "custom_package_request" || understanding.intent === "booking_request")) {
+      // Safety net: the LLM can still misclassify a bare trip name
+      // ("kedarnath trip") as booking_request. Only trust the LLM's
+      // booking_request when the message itself has a clear booking verb
+      // OR a trip is already anchored (so the user is following up on a
+      // previously discussed trip).
+      if (understanding.intent === "booking_request" && !hasBookingVerb(text) && !state.packageId) {
+        // Fall through: this is a trip overview, not a booking request.
+      } else {
+        collectorIntent = understanding.intent;
+      }
+    }
+  }
+
+  if (collectorIntent) {
+    return withTrace(
+      await runCollector({
+        db,
+        tenantId,
+        state,
+        intent: collectorIntent,
+        text,
+        catalogue,
+        understanding,
+        collectorExtractor: rag.collectorExtractor,
+      }),
+      { ...trace, intent: collectorIntent },
+    );
   }
 
   const escalation = resolveEscalation(keywordReason, understanding);
@@ -165,8 +241,11 @@ export async function routeMessage(
         nextPackageId:
           validatePackageId(understanding?.packageId ?? null, catalogue) ?? state.packageId,
         nextPendingClarificationCount: 0,
+        nextPhase: state.phase,
+        nextCollectorData: state.collectorData,
         escalateReason: escalation.reason,
         escalateSeverity: escalation.severity,
+        escalateDetail: null,
         sourceChunkIds: null,
       },
       { ...trace, intent: escalation.reason },
@@ -350,6 +429,16 @@ function singleDeterministicMatch(text: string, catalogue: Catalogue): Catalogue
   return matched.length === 1 ? matched[0] : null;
 }
 
+// True when the message contains a clear booking verb. Used to separate
+// "kedarnath trip" (package_overview) from "I want to book kedarnath"
+// (booking_request). The keyword pre-gate already covers most booking
+// phrasings; this is a backstop for LLM classifications that over-match.
+const BOOKING_VERBS = /\b(book|reserve|register|sign\s*up|confirm\s+(?:my\s+)?(?:seat|booking)|lock\s+(?:my\s+)?seat|pay\s+(?:the\s+)?(?:first\s+)?(?:installment|advance))\b/i;
+
+function hasBookingVerb(text: string): boolean {
+  return BOOKING_VERBS.test(text);
+}
+
 // Prefixed onto a real answer when the trip it's about wasn't named in this
 // message but carried over from earlier in the conversation ("tell me about
 // the hotels" after "Kerala trip?" two messages back). Makes clear which
@@ -396,8 +485,11 @@ async function buildReply(input: BuildReplyInput): Promise<RouteResult> {
       replyText,
       nextPackageId: anchored?.id ?? state.packageId,
       nextPendingClarificationCount: 0,
+      nextPhase: state.phase,
+      nextCollectorData: state.collectorData,
       escalateReason: null,
       escalateSeverity: null,
+      escalateDetail: null,
       sourceChunkIds: null,
       ...extra,
     };
@@ -456,8 +548,11 @@ async function clarify(input: BuildReplyInput): Promise<RouteResult> {
       replyText: escalationReply("clarification_limit_reached", input.holdingReplyMessage),
       nextPackageId: null,
       nextPendingClarificationCount: nextCount,
+      nextPhase: state.phase,
+      nextCollectorData: state.collectorData,
       escalateReason: "clarification_limit_reached",
       escalateSeverity: severityFor("clarification_limit_reached"),
+      escalateDetail: null,
       sourceChunkIds: null,
     };
   }
@@ -467,14 +562,17 @@ async function clarify(input: BuildReplyInput): Promise<RouteResult> {
       named.length > 1 ? clarifyBetweenCandidatesReply(named) : clarifyPackageReply(catalogue),
     nextPackageId: state.packageId,
     nextPendingClarificationCount: nextCount,
+    nextPhase: state.phase,
+    nextCollectorData: state.collectorData,
     escalateReason: null,
     escalateSeverity: null,
+    escalateDetail: null,
     sourceChunkIds: null,
   };
 }
 
 async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
-  const { db, tenantId, intent, anchored, trace, holdingReplyMessage, anchorFromThisMessage } = input;
+  const { db, tenantId, intent, anchored, trace, holdingReplyMessage, anchorFromThisMessage, state } = input;
   if (!anchored) {
     throw new Error("runAnchoredIntent called without an anchored package");
   }
@@ -500,8 +598,11 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
             replyText: prefixed(`${outcome.text}\n\n${extra.text}`),
             nextPackageId: anchored.id,
             nextPendingClarificationCount: 0,
+            nextPhase: state.phase,
+            nextCollectorData: state.collectorData,
             escalateReason: null,
             escalateSeverity: null,
+            escalateDetail: null,
             sourceChunkIds: null,
           }, trace);
         }
@@ -518,8 +619,11 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
       replyText: prefixed(outcome.text),
       nextPackageId: anchored.id,
       nextPendingClarificationCount: 0,
+      nextPhase: state.phase,
+      nextCollectorData: state.collectorData,
       escalateReason: outcome.escalateReason,
       escalateSeverity: outcome.escalateReason ? severityFor(outcome.escalateReason) : null,
+      escalateDetail: null,
       sourceChunkIds: null,
     }, trace);
   } catch (error) {
@@ -533,8 +637,11 @@ async function runAnchoredIntent(input: BuildReplyInput): Promise<RouteResult> {
       replyText: escalationReply("tool_error", input.holdingReplyMessage),
       nextPackageId: anchored.id,
       nextPendingClarificationCount: 0,
+      nextPhase: state.phase,
+      nextCollectorData: state.collectorData,
       escalateReason: "tool_error",
       escalateSeverity: severityFor("tool_error"),
+      escalateDetail: null,
       sourceChunkIds: null,
     }, trace);
   }
@@ -564,8 +671,11 @@ async function answerFromKnowledge(input: BuildReplyInput): Promise<RouteResult>
           : result.text,
         nextPackageId: anchored?.id ?? state.packageId,
         nextPendingClarificationCount: 0,
+        nextPhase: state.phase,
+        nextCollectorData: state.collectorData,
         escalateReason: null,
         escalateSeverity: null,
+        escalateDetail: null,
         sourceChunkIds: result.sourceIds,
       }, trace);
     }
@@ -574,8 +684,11 @@ async function answerFromKnowledge(input: BuildReplyInput): Promise<RouteResult>
       replyText: escalationReply(result.reason, holdingReplyMessage),
       nextPackageId: anchored?.id ?? state.packageId,
       nextPendingClarificationCount: 0,
+      nextPhase: state.phase,
+      nextCollectorData: state.collectorData,
       escalateReason: result.reason,
       escalateSeverity: severityFor(result.reason),
+      escalateDetail: null,
       sourceChunkIds: null,
     }, trace);
   } catch (error) {
@@ -588,8 +701,11 @@ async function answerFromKnowledge(input: BuildReplyInput): Promise<RouteResult>
       replyText: escalationReply("tool_error", holdingReplyMessage),
       nextPackageId: anchored?.id ?? state.packageId,
       nextPendingClarificationCount: 0,
+      nextPhase: state.phase,
+      nextCollectorData: state.collectorData,
       escalateReason: "tool_error",
       escalateSeverity: severityFor("tool_error"),
+      escalateDetail: null,
       sourceChunkIds: null,
     }, trace);
   }
@@ -743,4 +859,114 @@ async function routeWithKeywordFallback(
   });
 
   return withTrace(outcome, trace);
+}
+
+// ─── Collector (custom package + booking) ──────────────────────────────────
+
+// Resolves the phrase that should kick off collection. Both the keyword
+// pre-gate and the LLM understanding pass can claim it. The phase is
+// sticky: once a conversation enters collecting_custom_package or
+// collecting_booking, every subsequent message in the same phase stays
+// on that flow until the collector itself escalates or the phase is
+// cleared by some other system (e.g. an admin returns the thread to
+// the bot, which resets the phase).
+type CollectorIntent = "custom_package_request" | "booking_request";
+
+function resolveCollectorIntent(
+  text: string,
+  understanding: MessageUnderstanding | null,
+  state: ConversationRouteState,
+): CollectorIntent | null {
+  // The collector is re-entrant, not single-shot. Every time the
+  // traveller asks for a custom package or to book, the collector
+  // starts fresh: any prior phase is dropped, and a new escalation
+  // entry will be created at the end so the admin sees each request as
+  // its own line item rather than one running thread. The earlier
+  // "follow up until 50% filled" design made the bot pester travellers
+  // for missing fields, which they hated.
+  const classified = classifyIntent(text);
+  if (classified.kind === "known" && (classified.type === "custom_package_request" || classified.type === "booking_request")) {
+    return classified.type;
+  }
+  if (understanding?.intent === "custom_package_request") return "custom_package_request";
+  if (understanding?.intent === "booking_request") return "booking_request";
+  return null;
+}
+
+// Decides what kind of work to do for the next message. Three cases:
+//   - Phase null and intent matches → start collection, ask everything
+//   - Phase set and matches the resolved intent → parse the reply,
+//     send handoff message, escalate with captured data, clear phase.
+//     No "still need X, Y, Z" follow-ups; no fill-% gating.
+//   - Phase set but a different collector intent → reset, start fresh
+//     for the new intent. Each request is its own escalation entry.
+async function runCollector(input: {
+  db: Db;
+  tenantId: string;
+  state: ConversationRouteState;
+  intent: CollectorIntent;
+  text: string;
+  catalogue: Catalogue;
+  understanding: MessageUnderstanding | null;
+  collectorExtractor?: CollectorExtractor;
+}): Promise<RouteResult> {
+  const { state, intent, text, catalogue, understanding, collectorExtractor } = input;
+
+  const targetPhase: CollectorPhase =
+    intent === "custom_package_request" ? "collecting_custom_package" : "collecting_booking";
+
+  // If the phase is set and matches this intent, this is the user's
+  // reply to the ask-all. Extract whatever they provided, send the
+  // handoff message (which names both what we have and what's missing),
+  // escalate with the summary, and clear the phase.
+  if (state.phase === targetPhase && state.collectorData) {
+    const packageContext = intent === "booking_request"
+      ? { name: catalogue.find((c) => c.id === state.packageId)?.name ?? null }
+      : undefined;
+    const updated = await extractCollectorFields(
+      targetPhase,
+      state.collectorData as CollectorData,
+      text,
+      packageContext,
+      collectorExtractor,
+    );
+    const summary = buildCollectorSummary(targetPhase, updated);
+
+    return {
+      replyText: buildHandoffTravelerMessage(targetPhase, updated),
+      nextPackageId: state.packageId,
+      nextPendingClarificationCount: 0,
+      nextPhase: null,
+      nextCollectorData: null,
+      escalateReason: targetPhase === "collecting_custom_package" ? "custom_package_request" : "booking_request",
+      escalateSeverity: "hard",
+      escalateDetail: summary,
+      sourceChunkIds: null,
+    };
+  }
+
+  // Fresh request (phase null or a different phase). Ask everything.
+  const anchored =
+    intent === "booking_request"
+      ? catalogue.find((c) => c.id === state.packageId) ??
+        catalogue.find((c) => c.id === validatePackageId(understanding?.packageId ?? null, catalogue)) ??
+        null
+      : null;
+
+  const askText = buildCollectorAskAll(
+    targetPhase,
+    anchored?.name ?? undefined,
+  );
+
+  return {
+    replyText: askText,
+    nextPackageId: anchored?.id ?? state.packageId,
+    nextPendingClarificationCount: 0,
+    nextPhase: targetPhase,
+    nextCollectorData: { fields: {} } as unknown as Record<string, unknown>,
+    escalateReason: null,
+    escalateSeverity: null,
+    escalateDetail: null,
+    sourceChunkIds: null,
+  };
 }
