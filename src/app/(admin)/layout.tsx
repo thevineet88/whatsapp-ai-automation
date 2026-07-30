@@ -4,6 +4,10 @@ import { getServerDb } from "@/lib/db/serverDb";
 import { getActiveTenantConfig } from "@/lib/db/tenantConfig";
 import LoginForm from "./login-form";
 
+// All admin pages query the database at request time. Preventing Next.js
+// from trying to prerender any of them during `next build`.
+export const dynamic = "force-dynamic";
+
 async function AdminGuard({ children }: { children: React.ReactNode }) {
   const db = getServerDb();
   const [tenant] = await db.select().from(tenants).limit(1);
